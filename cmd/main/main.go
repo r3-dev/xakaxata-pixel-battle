@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go-echo-sandbox/ui"
 	"io"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/gorilla/sessions"
 	"github.com/joho/godotenv"
+	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/nrednav/cuid2"
 	"github.com/redis/go-redis/v9"
@@ -84,6 +86,15 @@ func main() {
 	}
 
 	e := echo.New()
+	e.Use(echoprometheus.NewMiddleware("pixelbattle")) // adds middleware to gather metrics
+
+	go func() {
+		metrics := echo.New()                                // this Echo will run on separate port 8081
+		metrics.GET("/metrics", echoprometheus.NewHandler()) // adds route to serve gathered metrics
+		if err := metrics.Start(":3001"); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal(err)
+		}
+	}()
 
 	e.Renderer = ui.UiTemplates
 	e.Static("/static", "ui/.dist")
