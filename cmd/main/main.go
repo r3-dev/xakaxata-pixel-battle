@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"go-echo-sandbox/ui"
 	"io"
 	"log"
@@ -41,7 +42,7 @@ var AppOAuthConfig OAuthConfig
 
 func TwitchConfig() oauth2.Config {
 	AppOAuthConfig.TwitchLoginConfig = oauth2.Config{
-		RedirectURL:  "http://localhost:8080/api/auth/callback",
+		RedirectURL:  fmt.Sprintf("%s/api/auth/callback", os.Getenv("SITE_URL")),
 		ClientID:     os.Getenv("TWITCH_CLIENT_ID"),
 		ClientSecret: os.Getenv("TWITCH_CLIENT_SECRET"),
 		Scopes:       []string{"user:read:email"},
