@@ -48,7 +48,6 @@ func TwitchConfig() oauth2.Config {
 		Scopes:       []string{"user:read:email"},
 		Endpoint:     twitch.Endpoint,
 	}
-
 	return AppOAuthConfig.TwitchLoginConfig
 }
 
