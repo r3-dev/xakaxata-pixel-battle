@@ -89,7 +89,8 @@ func main() {
 	e.Static("/static", "ui/.dist")
 
 	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(rate.Limit(20))))
-	e.Use(session.Middleware(sessions.NewCookieStore([]byte("secret"))))
+
+	e.Use(session.Middleware(sessions.NewCookieStore([]byte(os.Getenv("AUTH_SECRET")))))
 
 	TwitchConfig()
 
