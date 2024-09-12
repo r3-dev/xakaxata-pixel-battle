@@ -1,0 +1,17 @@
+{
+  "name": "go-echo-sandbox",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "build:js": "bun build ./src/global.ts --outdir .dist --minify --splitting",
+    "build:css": "bunx tailwindcss -c tailwind.config.js -i ./src/global.css -o .dist/global.css --minify",
+    "build": "rm -rf .dist && bun build:js && bun build:css"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "tailwindcss": "^3.4.11"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
