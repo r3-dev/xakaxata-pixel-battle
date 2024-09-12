@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -60,15 +61,27 @@ func main() {
 
 	rdb_auth := redis.NewClient(&redis.Options{
 		Addr:     os.Getenv("REDIS_HOST"),
-		Password: "", // no password set
-		DB:       0,  // use default DB
+		Username: os.Getenv("REDIS_USERNAME"),
+		Password: os.Getenv("REDIS_PASSWORD"),
+		DB:       0, // use default DB
 	})
 
 	rdb_users := redis.NewClient(&redis.Options{
 		Addr:     os.Getenv("REDIS_HOST"),
-		Password: "", // no password set
-		DB:       1,  // use default DB
+		Username: os.Getenv("REDIS_USERNAME"),
+		Password: os.Getenv("REDIS_PASSWORD"),
+		DB:       1, // use default DB
 	})
+
+	err := rdb_auth.Ping(context.TODO()).Err()
+	if err != nil {
+		log.Fatal("Error connectint redis:", err)
+	}
+
+	err = rdb_users.Ping(context.TODO()).Err()
+	if err != nil {
+		log.Fatal("Error connectint redis: ", err)
+	}
 
 	e := echo.New()
 	e.Renderer = ui.UiTemplates
