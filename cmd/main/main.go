@@ -84,6 +84,7 @@ func main() {
 	}
 
 	e := echo.New()
+
 	e.Renderer = ui.UiTemplates
 	e.Static("/static", "ui/.dist")
 
