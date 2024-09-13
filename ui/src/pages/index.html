@@ -34,18 +34,20 @@
           canvas.width = window.innerWidth;
           canvas.height = window.innerHeight;
 
-          this.offset = { x: 0, y: 0 };
-          this.pixel = { size: 0 };
+          this.offset = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEYS.OFFSET));
+          this.pixel = { size: JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEYS.PIXEL_SIZE)) };
         }
 
         setSize(width, height) {
           this.grid.width = width;
           this.grid.height = height;
-          this.pixel = { size: Math.floor(window.innerWidth / this.grid.width) };
-          this.offset = {
+
+          this.pixel.size = localStorage.getItem(LOCAL_STORAGE_KEYS.PIXEL_SIZE) ?? Math.floor(window.innerWidth / this.grid.width);
+          
+          this.offset = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEYS.OFFSET)) ?? {
             x: window.innerWidth / 2 - this.pixel.size * this.grid.width / 2,
             y: window.innerHeight / 2 - this.pixel.size * this.grid.height / 2
-          }
+          };
         }
 
         drawCanvas(pixels) {
@@ -65,6 +67,7 @@
         setOffset(x, y) {
           this.offset.x = x;
           this.offset.y = y;
+          localStorage.setItem(LOCAL_STORAGE_KEYS.OFFSET, JSON.stringify(this.offset));
         }
 
         zoom(pixels, factor, cursorX, cursorY) {
@@ -79,10 +82,12 @@
             Math.min(maxPixelSize, this.pixel.size),
           );
 
-          this.offset = {
-              x: (this.offset.x - cursorX) * (this.pixel.size / prevPixelSize) + cursorX,
-              y: (this.offset.y - cursorY) * (this.pixel.size / prevPixelSize) + cursorY
-          }
+          localStorage.setItem(LOCAL_STORAGE_KEYS.PIXEL_SIZE, this.pixel.size);
+
+          this.setOffset(
+            (this.offset.x - cursorX) * (this.pixel.size / prevPixelSize) + cursorX, 
+            (this.offset.y - cursorY) * (this.pixel.size / prevPixelSize) + cursorY
+          );
           
           this.drawCanvas(pixels);
           this.drawCursor(cursorX, cursorY)
@@ -171,7 +176,9 @@
       const CHUNK_SIZE = 256;
       const PREFIX = 'pixelbattle'
       const LOCAL_STORAGE_KEYS = {
-        COLOR: `${PREFIX}_color`
+        COLOR: `${PREFIX}_color`,
+        OFFSET: `${PREFIX}_offset`,
+        PIXEL_SIZE: `${PREFIX}_pixelSize`
       };
       const COLOR_MAP = {
           0: "#FFFFFF", // white
@@ -289,7 +296,22 @@
         }
 
         if (type === SOCKETS_MESSAGES.STATE_PLAYER) {
+          const timeBuffer = await event.data.slice(1);
+          const [time] = new Uint8Array(await timeBuffer.arrayBuffer());
 
+          console.log('@time', time);
+          if (!time) return;
+        
+          const paletteContainer = document.getElementById('paletteContainer');
+          const delayBanner = document.createElement('div');
+          delayBanner.className = 'bg-black/80 absolute w-full top-0 bottom-0 left-0 right-0 text-white rounded-lg flex justify-center items-center'
+          delayBanner.innerHTML = 'Delay';
+          isDelay = true;
+          paletteContainer.appendChild(delayBanner);
+          setTimeout(() => {
+            isDelay = false;
+            delayBanner.remove();
+          }, time);
         }
       }
 
@@ -329,7 +351,7 @@
         setTimeout(() => {
           isDelay = false;
           delayBanner.remove();
-        }, 5000)
+        }, 5000);
 
         socket.send(new Blob([new Uint8Array([SOCKETS_MESSAGES.STATE_MIGRATION, chunk, pixel.index - chunk * CHUNK_SIZE, currentColor.id])]), { binary: true });
       })
@@ -359,7 +381,7 @@
       })
 
       window.addEventListener('resize', () => {
-        canvas.drawCanvas();
+        canvas.drawCanvas(pixels);
       })
     </script>
   </body>
