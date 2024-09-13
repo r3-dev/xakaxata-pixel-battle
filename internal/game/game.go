@@ -157,15 +157,28 @@ func (g *Game) WsHandler(c echo.Context) error {
 	for i, c := range g.state.colorMap {
 		b[i+3] = byte(c)
 	}
+
 	if err := ws.WriteMessage(websocket.BinaryMessage, b); err != nil {
 		c.Logger().Error(err)
 	}
 
 	for {
 		// Read
-		_, msg, err := ws.ReadMessage()
+		msgType, msg, err := ws.ReadMessage()
 		if err != nil {
 			c.Logger().Error(err)
+		}
+
+		if msgType == websocket.BinaryMessage {
+			b := msg
+			if len(b) != 3 {
+				continue
+			}
+
+			switch int(b[0]) {
+			case StateMigrationMessage:
+				g.MigrateState(int(b[1]), Color(b[2]))
+			}
 		}
 
 		fmt.Printf("%s\n", msg)
@@ -179,25 +192,29 @@ func gameLoop(g *Game) {
 	for {
 		select {
 		case <-ticker.C:
-			println("kk")
 			if g.stateMigration == nil {
 				continue
 			}
 
 			// convert g.state.colorMap to []byte slice
-			b := make([]byte, len(g.stateMigration))
+			b := make([]byte, len(g.stateMigration)*2+1)
 
-			for i, c := range g.state.colorMap {
-				b[i] = byte(c)
+			b[0] = byte(StateMigrationMessage)
+
+			for i, c := range g.stateMigration {
+				b[i*2+1] = byte(c.index)
+				b[i*2+2] = byte(c.color)
 			}
 
+			println("Send new state")
 			// loop over g.players and send state to each player
-
 			for _, player := range g.players {
-				if err := player.ws.WriteMessage(1, b); err != nil {
+				if err := player.ws.WriteMessage(websocket.BinaryMessage, b); err != nil {
 					panic(err)
 				}
 			}
+
+			g.stateMigration = nil
 		}
 	}
 }
