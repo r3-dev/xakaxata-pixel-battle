@@ -13,6 +13,7 @@
   <body>
     <!-- {{ template "HelloWorldComponent" . }} -->
 
+    <div id='users' class='absolute left-2 top-2 bg-white text-black py-2 px-4 rounded-lg'>1</div>
     <div id='palette' class='absolute bottom-6 left-0 right-0 flex justify-center z-50'></div>
     <div id='kit' class='absolute bottom-0 top-0 right-5 flex justify-center'>
       <div class='flex justify-center gap-2 flex-col z-50'>
@@ -24,6 +25,12 @@
     <div id='info' class='absolute hidden right-2 bottom-2 p-1 text-md bg-white border border-gray-200 rounded-sm shadow'></div>
     <canvas id="root"></canvas>
     <script>
+
+      // 1. dragging доделать 
+      // 2. попап с twitch
+      // 3. сетчик юзеров 
+      // 4. 
+
       class Canvas {
         constructor() {
           const canvas = document.getElementById('root');
@@ -171,7 +178,8 @@
       const SOCKETS_MESSAGES = {
         STATE: 0,
         STATE_MIGRATION: 1,
-        STATE_PLAYER: 2
+        STATE_PLAYER: 2,
+        STATE_PLAYERS: 3
       }
       const CHUNK_SIZE = 256;
       const PREFIX = 'pixelbattle'
@@ -258,6 +266,7 @@
       }
 
       socket.onmessage = async (event) => {
+        console.log('@@@', event.data)
         const typeBuffer = await event.data.slice(0,1);
         const [type] = new Uint8Array(await typeBuffer.arrayBuffer());
         
@@ -287,6 +296,7 @@
             updatedPixels[i] = [migrations[i * 3], migrations[i * 3 + 1], migrations[i * 3 + 2]];
           }
 
+          console.log('@updatedPixels', updatedPixels);
           updatedPixels.forEach(([chunk, chunkIndex, colorId]) => {
             const index = chunk * CHUNK_SIZE + chunkIndex;
             const color = COLOR_MAP[colorId];
@@ -296,11 +306,10 @@
         }
 
         if (type === SOCKETS_MESSAGES.STATE_PLAYER) {
-          const timeBuffer = await event.data.slice(1);
-          const [time] = new Uint8Array(await timeBuffer.arrayBuffer());
-
-          console.log('@time', time);
-          if (!time) return;
+          const secondsBuffer = await event.data.slice(1);
+          const [seconds] = new Uint8Array(await secondsBuffer.arrayBuffer());
+         
+          if (!seconds) return;
         
           const paletteContainer = document.getElementById('paletteContainer');
           const delayBanner = document.createElement('div');
@@ -311,7 +320,15 @@
           setTimeout(() => {
             isDelay = false;
             delayBanner.remove();
-          }, time);
+          }, seconds * 1000);
+        }
+
+        if (type === SOCKETS_MESSAGES.STATE_PLAYERS) {
+          const countBuffer = await event.data.slice(1);
+          const [count] = new Uint32Array(await countBuffer.arrayBuffer());
+          console.log('@@@@', count);
+          const users = document.getElementById('users');
+          users.innerHTML = count;
         }
       }
 
@@ -336,23 +353,14 @@
 
       document.addEventListener('click', (event) => {
         if (!canvas.grid.hovered || isDelay) return
-        const pixel = canvas.updatePixel(event.clientX, event.clientY, currentColor.value);
-        pixels[pixel.index] = currentColor.id;
-        // console.log('UPDATE PIXEL', pixel);
-        // const pixel = canvas.getPixel(event.clientX, event.clientY);
-        const chunk = Math.floor(pixel.index / CHUNK_SIZE);
-
-        const paletteContainer = document.getElementById('paletteContainer');
-        const delayBanner = document.createElement('div');
-        delayBanner.className = 'bg-black/80 absolute w-full top-0 bottom-0 left-0 right-0 text-white rounded-lg flex justify-center items-center'
-        delayBanner.innerHTML = 'Delay';
         isDelay = true;
-        paletteContainer.appendChild(delayBanner);
-        setTimeout(() => {
-          isDelay = false;
-          delayBanner.remove();
-        }, 5000);
-
+        // const pixel = canvas.updatePixel(event.clientX, event.clientY, currentColor.value);
+        // console.log('UPDATE PIXEL', pixel);
+        const pixel = canvas.getPixel(event.clientX, event.clientY);
+        pixels[pixel.index] = currentColor.id;
+        const chunk = Math.floor(pixel.index / CHUNK_SIZE);
+        
+        console.log('@updatedPixels', chunk, pixel.index - chunk * CHUNK_SIZE, currentColor.id);
         socket.send(new Blob([new Uint8Array([SOCKETS_MESSAGES.STATE_MIGRATION, chunk, pixel.index - chunk * CHUNK_SIZE, currentColor.id])]), { binary: true });
       })
 
