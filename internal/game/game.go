@@ -126,21 +126,6 @@ func (g *Game) WsHandler(c echo.Context) error {
 	}
 	defer ws.Close()
 
-	// Send initial state to client
-	b := make([]byte, len(g.state.colorMap)+3)
-
-	b[0] = byte(StateMessage)
-
-	b[1] = byte(g.mapSizeX)
-	b[2] = byte(g.mapSizeY)
-
-	for i, c := range g.state.colorMap {
-		b[i+3] = byte(c)
-	}
-	if err := ws.WriteMessage(websocket.BinaryMessage, b); err != nil {
-		c.Logger().Error(err)
-	}
-
 	// add player to game
 	sess, err := session.Get("session", c)
 	if err != nil {
@@ -159,6 +144,22 @@ func (g *Game) WsHandler(c echo.Context) error {
 	}
 
 	g.AddPlayer(player)
+	defer g.RemovePlayer(player)
+
+	// Send initial state to client
+	b := make([]byte, len(g.state.colorMap)+3)
+
+	b[0] = byte(StateMessage)
+
+	b[1] = byte(g.mapSizeX)
+	b[2] = byte(g.mapSizeY)
+
+	for i, c := range g.state.colorMap {
+		b[i+3] = byte(c)
+	}
+	if err := ws.WriteMessage(websocket.BinaryMessage, b); err != nil {
+		c.Logger().Error(err)
+	}
 
 	for {
 		// Read
@@ -169,7 +170,6 @@ func (g *Game) WsHandler(c echo.Context) error {
 
 		fmt.Printf("%s\n", msg)
 	}
-
 }
 
 func gameLoop(g *Game) {
@@ -179,20 +179,25 @@ func gameLoop(g *Game) {
 	for {
 		select {
 		case <-ticker.C:
+			println("kk")
+			if g.stateMigration == nil {
+				continue
+			}
+
 			// convert g.state.colorMap to []byte slice
-			// b := make([]byte, len(g.stateMigration))
+			b := make([]byte, len(g.stateMigration))
 
-			// for i, c := range g.state.colorMap {
-			// 	b[i] = byte(c)
-			// }
+			for i, c := range g.state.colorMap {
+				b[i] = byte(c)
+			}
 
-			// // loop over g.players and send state to each player
+			// loop over g.players and send state to each player
 
-			// for _, player := range g.players {
-			// 	if err := player.ws.WriteMessage(1, b); err != nil {
-			// 		panic(err)
-			// 	}
-			// }
+			for _, player := range g.players {
+				if err := player.ws.WriteMessage(1, b); err != nil {
+					panic(err)
+				}
+			}
 		}
 	}
 }
