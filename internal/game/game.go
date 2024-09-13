@@ -170,6 +170,7 @@ func (g *Game) WsHandler(c echo.Context) error {
 		msgType, msg, err := ws.ReadMessage()
 		if err != nil {
 			c.Logger().Error(err)
+			return err
 		}
 
 		if msgType == websocket.BinaryMessage {
@@ -184,7 +185,7 @@ func (g *Game) WsHandler(c echo.Context) error {
 				i := int(b[2])
 				c := Color(b[3])
 
-				fmt.Printf("Migrate state %d %d", i, c)
+				fmt.Printf("Migrate state %d %d %d\n", chunk, i, c)
 
 				g.MigrateState(chunk, i, c)
 			}
@@ -204,7 +205,7 @@ func gameLoop(g *Game) {
 			}
 
 			// convert g.state.colorMap to []byte slice
-			b := make([]byte, len(g.stateMigration)*2+1)
+			b := make([]byte, len(g.stateMigration)*3+1)
 
 			b[0] = byte(StateMigrationMessage)
 
@@ -216,7 +217,6 @@ func gameLoop(g *Game) {
 				i = i + 3
 			}
 
-			println("Send new state")
 			// loop over g.players and send state to each player
 			for _, player := range g.players {
 				if err := player.ws.WriteMessage(websocket.BinaryMessage, b); err != nil {
