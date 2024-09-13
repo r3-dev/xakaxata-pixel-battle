@@ -133,14 +133,18 @@
           }
         }
 
-        drawCursor(x, y) {
+        hideCursor() {
           const cursor = document.getElementById('cursor');
+          cursor.style.display = 'none';
+        }
+
+        drawCursor(x, y) {
           const info = document.getElementById('info');
   
           if (!this.grid.hovered) { 
-              cursor.style.display = 'none';
+              this.hideCursor();
               info.style.display = 'none';
-              return 
+              return
           };
 
           const pixel = this.getPixel(x, y)
@@ -245,17 +249,17 @@
 
       socket.onmessage = async (event) => {
         const typeBuffer = await event.data.slice(0,1);
-        const [type] = new Int8Array(await typeBuffer.arrayBuffer());
+        const [type] = new Uint8Array(await typeBuffer.arrayBuffer());
         
         console.log('TYPE MESSAGE', type);
         if (type === SOCKETS_MESSAGES.STATE) {
           const sizeBuffer = await event.data.slice(1,3);
-          const [width, height] = new Int8Array(await sizeBuffer.arrayBuffer());
+          const [width, height] = new Uint8Array(await sizeBuffer.arrayBuffer());
           console.log('WIDHT:', width);
           console.log('HEIGHT:', height);
 
           const pixelsBuffer = await event.data.slice(3);
-          pixels = new Int8Array(await pixelsBuffer.arrayBuffer());
+          pixels = new Uint8Array(await pixelsBuffer.arrayBuffer());
 
           canvas.setSize(width, height);
           canvas.drawCanvas(pixels);
@@ -263,18 +267,18 @@
 
         if (type === SOCKETS_MESSAGES.STATE_MIGRATION) {
           const migrationBuffer = await event.data.slice(1);
-          const migrations = new Int8Array(await migrationBuffer.arrayBuffer());
+          const migrations = new Uint8Array(await migrationBuffer.arrayBuffer());
           console.log('@migrations', migrations)
 
           const updatedPixels = []
-          const pars = migrations.length / 2;
+          const pars = migrations.length / 3;
           for (let i = 0; i < pars; i++) {
-            updatedPixels[i] = [migrations[i * 2], migrations[i * 2 + 1]];
+            updatedPixels[i] = [migrations[i * 3], migrations[i * 3 + 1], migrations[i * 3 + 2]];
           }
 
-          console.log('@@@updatedPixels', updatedPixels)
-          updatedPixels.forEach(([index, color]) => {
-            canvas.updatePixelByIndex(index, color)
+          console.log('@updated pixels', updatedPixels)
+          updatedPixels.forEach(([chunk, index, color]) => {
+            canvas.updatePixelByIndex(chunk * CHUNK_SIZE + index, COLOR_MAP[color])
           })
         }
       }
@@ -285,20 +289,24 @@
     </script>
     <script>
       let isDraging = false;
-
-      document.addEventListener('mousedown', (event) => {
-        // isDraging = true;
-      })
+      let clickX = 0;
+      let clickY = 0;
 
       document.addEventListener('mousemove', (event) => {
+        if (isDraging) {
+          canvas.hideCursor();
+          return 
+        }
         canvas.onGridHover(event.clientX, event.clientY);
         canvas.drawCursor(event.clientX, event.clientY);
       })
 
       document.addEventListener('click', (event) => {
         if (!canvas.grid.hovered) return
-        const pixel = canvas.updatePixel(event.clientX, event.clientY, currentColor.value);
-        console.log('UPDATE PIXEL', pixel);
+        // const pixel = canvas.updatePixel(event.clientX, event.clientY, currentColor.value);
+        // console.log('UPDATE PIXEL', pixel);
+        const pixel = canvas.getPixel(event.clientX, event.clientY);
+
         const chunk = Math.floor(pixel.index / CHUNK_SIZE);
         socket.send(new Blob([new Uint8Array([SOCKETS_MESSAGES.STATE_MIGRATION, chunk, pixel.index - chunk * CHUNK_SIZE, currentColor.id])]), { binary: true });
       })
@@ -309,12 +317,19 @@
         canvas.zoom(pixels, zoomFactor, event.clientX, event.clientY);
       });
 
-      let clickX = canvas.offset.x;
-      let clickY = canvas.offset.y;
+      document.addEventListener('mousedown', (event) => {
+        isDraging = true;
+        clickX = event.clientX;
+        clickY = event.clientY;
+      })
+
+      document.addEventListener('mouseup', (event) => {
+        isDraging = false;
+      })
 
       document.addEventListener("mousemove", (event) => {
         if (!isDraging) return;
-        canvas.setOffset(canvas.offset.x - (event.clientX - clickX), canvas.offset.y - (event.clientY - clickY));
+        canvas.setOffset(canvas.offset.x + (event.clientX - clickX), canvas.offset.y + (event.clientY - clickY));
         clickX = event.clientX;
         clickY = event.clientY;
         canvas.drawCanvas(pixels);
