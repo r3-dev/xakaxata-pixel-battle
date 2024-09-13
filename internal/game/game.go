@@ -1,13 +1,15 @@
 package game
 
 import (
-	"math/rand"
+	"context"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
 )
 
 var (
@@ -58,8 +60,13 @@ type Player struct {
 	cooldownAt time.Time
 }
 
-func (p *Player) SendState() {
+func (p *Player) SendPlayerState() {
+
 	secondsLeft := int(p.cooldownAt.Sub(time.Now()).Seconds())
+
+	if secondsLeft < 0 {
+		secondsLeft = 0
+	}
 
 	p.ws.WriteMessage(websocket.BinaryMessage, []byte{byte(PlayerStateMessage), byte(secondsLeft)})
 }
@@ -76,15 +83,24 @@ type Game struct {
 	// game state
 	state          *State
 	stateMigration map[int]*StateMigration
+	cooldownDB     *redis.Client
 }
 
 func New() *Game {
+	var rdb_player_cooldowns = redis.NewClient(&redis.Options{
+		Addr:     os.Getenv("REDIS_HOST"),
+		Username: os.Getenv("REDIS_USERNAME"),
+		Password: os.Getenv("REDIS_PASSWORD"),
+		DB:       2, // use default DB
+	})
+
 	game := &Game{
 		players:        make(map[string]*Player),
 		state:          newState(),
 		mapSizeX:       mapSizeX,
 		mapSizeY:       mapSizeY,
 		stateMigration: make(map[int]*StateMigration),
+		cooldownDB:     rdb_player_cooldowns,
 	}
 
 	go gameLoop(game)
@@ -99,7 +115,8 @@ func newState() *State {
 
 	// set callorsMap to random color
 	for i := 0; i < mapSize; i++ {
-		state.colorMap[i] = Color(rand.Intn(10))
+		// state.colorMap[i] = Color(rand.Intn(10))
+		state.colorMap[i] = Color(0)
 	}
 
 	return state
@@ -114,6 +131,7 @@ func (g *Game) AddPlayer(player *Player) {
 }
 
 func (g *Game) RemovePlayer(player *Player) {
+	g.SetPlayerCooldownAt(player.ID, player.cooldownAt)
 	delete(g.players, player.ID)
 }
 
@@ -127,6 +145,27 @@ func (g *Game) MigrateState(chunk int, i int, c Color) {
 	compIndex := chunk*256 + i
 
 	g.state.colorMap[compIndex] = c
+}
+
+func (g *Game) SetPlayerCooldownAt(id string, value time.Time) {
+	err := g.cooldownDB.Set(context.TODO(), id, value, 0).Err()
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (g *Game) GetPlayerCooldownById(id string) time.Time {
+	val, err := g.cooldownDB.Get(context.TODO(), id).Result()
+	if err != nil {
+		return time.Now()
+	}
+
+	t, err := time.Parse(time.RFC3339, val)
+	if err != nil {
+		panic(err)
+	}
+
+	return t
 }
 
 var (
@@ -153,8 +192,9 @@ func (g *Game) WsHandler(c echo.Context) error {
 	user_id := sess.Values["user_id"].(string)
 
 	player := &Player{
-		ID: user_id,
-		ws: ws,
+		ID:         user_id,
+		ws:         ws,
+		cooldownAt: g.GetPlayerCooldownById(user_id),
 	}
 
 	g.AddPlayer(player)
@@ -176,7 +216,7 @@ func (g *Game) WsHandler(c echo.Context) error {
 		c.Logger().Error(err)
 	}
 
-	player.SendState()
+	player.SendPlayerState()
 
 	for {
 		// Read
@@ -206,7 +246,7 @@ func (g *Game) WsHandler(c echo.Context) error {
 
 				player.cooldownAt = time.Now().Add(coolDown)
 
-				player.SendState()
+				player.SendPlayerState()
 			}
 		}
 	}

@@ -263,7 +263,7 @@ func main() {
 			panic(err)
 		}
 
-		return c.Redirect(http.StatusSeeOther, "/me")
+		return c.Redirect(http.StatusSeeOther, "/")
 	})
 
 	e.GET("/api/auth/logout", func(c echo.Context) error {
