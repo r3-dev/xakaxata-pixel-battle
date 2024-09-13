@@ -121,7 +121,7 @@ func (g *Game) WsHandler(c echo.Context) error {
 	for i, c := range g.state.colorMap {
 		b[i] = byte(c)
 	}
-	if err := ws.WriteMessage(1, b); err != nil {
+	if err := ws.WriteMessage(websocket.BinaryMessage, b); err != nil {
 		c.Logger().Error(err)
 	}
 
