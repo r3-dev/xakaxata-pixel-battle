@@ -2,14 +2,17 @@ package game
 
 import (
 	"fmt"
+	"math/rand"
+	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 )
 
 var (
-	tickRate = 100
+	tickRate = 1000 * time.Millisecond
 	mapSize  = 400
 	coolDown = 5 * time.Second
 )
@@ -43,6 +46,7 @@ type StateMigration struct {
 // player
 type Player struct {
 	ID string
+	ws *websocket.Conn
 }
 
 // game state
@@ -58,11 +62,15 @@ type Game struct {
 }
 
 func New() *Game {
-	return &Game{
+	game := &Game{
 		players: make(map[string]*Player),
 		state:   newState(),
 		mapSize: mapSize,
 	}
+
+	go gameLoop(game)
+
+	return game
 }
 
 func newState() *State {
@@ -70,8 +78,9 @@ func newState() *State {
 		colorMap: make([]Color, mapSize),
 	}
 
+	// set callorsMap to random color
 	for i := 0; i < mapSize; i++ {
-		state.colorMap[i] = White
+		state.colorMap[i] = Color(rand.Intn(9))
 	}
 
 	return state
@@ -107,19 +116,67 @@ func (g *Game) WsHandler(c echo.Context) error {
 	}
 	defer ws.Close()
 
-	// get game from context
-	for {
-		// Write
-		err := ws.WriteMessage(websocket.TextMessage, []byte("Hello, Client!"))
-		if err != nil {
-			c.Logger().Error(err)
-		}
+	// Send initial state to client
+	b := make([]byte, len(g.state.colorMap))
+	for i, c := range g.state.colorMap {
+		b[i] = byte(c)
+	}
+	if err := ws.WriteMessage(1, b); err != nil {
+		c.Logger().Error(err)
+	}
 
+	// add player to game
+	sess, err := session.Get("session", c)
+	if err != nil {
+		panic(err)
+	}
+
+	if sess.Values["user_id"] == nil {
+		return c.Redirect(http.StatusSeeOther, "/")
+	}
+
+	user_id := sess.Values["user_id"].(string)
+
+	player := &Player{
+		ID: user_id,
+		ws: ws,
+	}
+
+	g.AddPlayer(player)
+
+	for {
 		// Read
 		_, msg, err := ws.ReadMessage()
 		if err != nil {
 			c.Logger().Error(err)
 		}
+
 		fmt.Printf("%s\n", msg)
+	}
+
+}
+
+func gameLoop(g *Game) {
+	ticker := time.NewTicker(tickRate)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			// convert g.state.colorMap to []byte slice
+			// b := make([]byte, len(g.stateMigration))
+
+			// for i, c := range g.state.colorMap {
+			// 	b[i] = byte(c)
+			// }
+
+			// // loop over g.players and send state to each player
+
+			// for _, player := range g.players {
+			// 	if err := player.ws.WriteMessage(1, b); err != nil {
+			// 		panic(err)
+			// 	}
+			// }
+		}
 	}
 }
