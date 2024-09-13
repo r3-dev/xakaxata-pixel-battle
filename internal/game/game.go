@@ -75,11 +75,12 @@ func (p *Player) SendPlayerState() {
 }
 
 func (p *Player) SendPlayerCounter(counter int) {
+	bs := make([]byte, 5)
+	bs[0] = byte(PlayerCounterMessage)
 
-	bs := make([]byte, 4)
-	binary.LittleEndian.AppendUint32(bs, uint32(counter))
+	binary.LittleEndian.PutUint32(bs[1:], uint32(counter))
 
-	p.ws.WriteMessage(websocket.BinaryMessage, append([]byte{byte(PlayerCounterMessage)}, bs...))
+	p.ws.WriteMessage(websocket.BinaryMessage, bs)
 }
 
 // game state
