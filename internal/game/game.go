@@ -13,8 +13,8 @@ import (
 
 var (
 	tickRate = 1000 * time.Millisecond
-	mapSizeX = 20
-	mapSizeY = 20
+	mapSizeX = 2
+	mapSizeY = 1
 	mapSize  = mapSizeX * mapSizeY
 	coolDown = 5 * time.Second
 )
