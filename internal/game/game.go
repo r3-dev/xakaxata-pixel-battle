@@ -15,7 +15,7 @@ var (
 	tickRate = 1000 * time.Millisecond
 	mapSizeX = 2
 	mapSizeY = 1
-	mapSize  = mapSizeX * mapSizeY
+	mapSize  = mapSizeX * mapSizeY * 256 * 256
 	coolDown = 5 * time.Second
 )
 
@@ -37,6 +37,7 @@ const (
 const (
 	StateMessage int = iota
 	StateMigrationMessage
+	PlayerStateMessage
 )
 
 // game state with colormap index
@@ -53,8 +54,9 @@ type StateMigration struct {
 
 // player
 type Player struct {
-	ID string
-	ws *websocket.Conn
+	ID         string
+	ws         *websocket.Conn
+	cooldownAt time.Time
 }
 
 // game state
@@ -185,6 +187,11 @@ func (g *Game) WsHandler(c echo.Context) error {
 
 			switch int(b[0]) {
 			case StateMigrationMessage:
+				if player.cooldownAt.After(time.Now()) {
+					println("cooldown")
+					continue
+				}
+
 				chunk := int(b[1])
 				i := int(b[2])
 				c := Color(b[3])
@@ -192,6 +199,8 @@ func (g *Game) WsHandler(c echo.Context) error {
 				fmt.Printf("Migrate state %d %d %d\n", chunk, i, c)
 
 				g.MigrateState(chunk, i, c)
+
+				player.cooldownAt = time.Now().Add(coolDown)
 			}
 		}
 	}
