@@ -24,6 +24,128 @@
     <div id='info' class='absolute hidden right-2 bottom-2 p-1 text-md bg-white border border-gray-200 rounded-sm shadow'></div>
     <canvas id="root"></canvas>
     <script>
+      class Canvas {
+        constructor() {
+          const canvas = document.getElementById('root');
+          this.element = canvas;
+          this.context = canvas.getContext("2d");
+          this.grid = { width: 0, height: 0, hovered: false };
+            
+          canvas.width = window.innerWidth;
+          canvas.height = window.innerHeight;
+        }
+
+        setSize(width, height) {
+          this.grid.width = width;
+          this.grid.height = height;
+          this.pixel = { size: Math.floor(window.innerWidth / this.grid.width) / 2 };
+          this.offset = {
+            x: window.innerWidth / 2 - this.pixel.size * this.grid.width / 2,
+            y: window.innerHeight / 2 - this.pixel.size * this.grid.height / 2
+          }
+        }
+
+        drawCanvas(pixels) {
+            this.context.fillStyle = "#282828";
+            this.context.fillRect(0, 0, this.element.width, this.element.height);
+
+            console.log('@', this.grid)
+            pixels.forEach((pixel, i) => {
+                const x = Math.floor(i % this.grid.width) * this.pixel.size + this.offset.x;
+                const y = Math.floor(i / this.grid.width) * this.pixel.size + this.offset.y;
+                const color = COLOR_MAP[pixels[i]];
+                
+                this.context.fillStyle = color;
+                this.context.fillRect(x, y, this.pixel.size, this.pixel.size);
+            });
+        }
+
+        zoom(pixels, factor, cursorX, cursorY) {
+          console.log('zoom params', factor, cursorX, cursorY)
+          const prevPixelSize = this.pixel.size;
+          console.log('prevPixelSize', prevPixelSize)
+          this.pixel.size *= factor;
+
+          const minPixelSize = this.grid.width / 100;
+          const maxPixelSize = this.grid.height / 0.1;
+
+          this.pixel.size = Math.max(
+            minPixelSize,
+            Math.min(maxPixelSize, this.pixel.size),
+          );
+
+          this.offset = {
+              x: (this.offset.x - cursorX) * (this.pixel.size / prevPixelSize) + cursorX,
+              y: (this.offset.y - cursorY) * (this.pixel.size / prevPixelSize) + cursorY
+          }
+          
+          this.drawCanvas(pixels);
+          this.drawCursor(cursorX, cursorY)
+        }
+
+        onGridHover(x, y) {
+          const isGridHovered = 
+            this.offset.x < x &&
+            this.offset.x + this.pixel.size * this.grid.width > x &&
+            this.offset.y < y && 
+            this.offset.y + this.pixel.size * this.grid.height > y 
+
+          this.grid.hovered = isGridHovered;
+        }
+
+        updatePixel(x, y, color) {
+          if (!this.grid.hovered) return;
+
+          const pixel = this.getPixel(x, y)
+
+          const newX = Math.floor(pixel.index % this.grid.width) * this.pixel.size + this.offset.x;
+          const newY = Math.floor(pixel.index / this.grid.width) * this.pixel.size + this.offset.y;
+
+          this.context.fillStyle = color;
+          this.context.fillRect(newX, newY, this.pixel.size, this.pixel.size);
+
+          return pixel;
+        }
+
+        getPixel(x, y) {
+          const pixelI = Math.floor((x - this.offset.x) / this.pixel.size);
+          const pixelJ = Math.floor((y - this.offset.y) / this.pixel.size);
+          const index = pixelJ * this.grid.width + pixelI;
+
+          return {
+            i: pixelI,
+            j: pixelJ,
+            index
+          }
+        }
+
+        drawCursor(x, y) {
+          const cursor = document.getElementById('cursor');
+          const info = document.getElementById('info');
+  
+          if (!this.grid.hovered) { 
+              cursor.style.display = 'none';
+              info.style.display = 'none';
+              return 
+          };
+
+          const pixel = this.getPixel(x, y)
+
+          const newX = Math.floor(pixel.index % this.grid.width) * this.pixel.size + this.offset.x;
+          const newY = Math.floor(pixel.index / this.grid.width) * this.pixel.size + this.offset.y;
+
+          cursor.style.display = 'block';
+          cursor.style.left = `${newX}px`;
+          cursor.style.top = `${newY}px`;
+          cursor.style.width = `${this.pixel.size}px`;
+          cursor.style.height = `${this.pixel.size}px`;
+
+          info.style.display = 'block';
+          info.innerHTML = `${pixel.i + 1}:${pixel.j + 1}`
+        }
+      }
+    </script>
+    <script>
       const SOCKETS_MESSAGES = {
         STATE: 0
       }
@@ -46,6 +168,7 @@
 
       let pixels = [];
       let currentColor = localStorage.getItem(LOCAL_STORAGE_KEYS.COLOR) ?? COLOR_MAP[0];
+      const canvas = new Canvas();
     </script>
     <script>
       // palette block
@@ -91,142 +214,6 @@
       })
     </script>
     <script>
-      class Canvas {
-        constructor(width, height) {
-          const canvas = document.getElementById('root');
-          this.element = canvas;
-          this.context = canvas.getContext("2d");
-          this.grid = { width, height, hovered: false };
-            
-          canvas.width = window.innerWidth;
-          canvas.height = window.innerHeight;
-
-          this.pixel = { size: Math.floor(window.innerWidth / this.grid.width) / 2 }
-          this.offset = {
-            x: window.innerWidth / 2 - this.pixel.size * this.grid.width / 2,
-            y: window.innerHeight / 2 - this.pixel.size * this.grid.height / 2
-          }
-        }
-
-        drawCanvas(pixels) {
-            this.context.fillStyle = "#282828";
-            this.context.fillRect(0, 0, this.element.width, this.element.height);
-
-            pixels.forEach((pixel, i) => {
-                const x = Math.floor(i % this.grid.width) * this.pixel.size + this.offset.x;
-                const y = Math.floor(i / this.grid.width) * this.pixel.size + this.offset.y;
-                const color = COLOR_MAP[pixels[i]];
-                
-                this.context.fillStyle = color;
-                this.context.fillRect(x, y, this.pixel.size, this.pixel.size);
-            });
-        }
-
-        zoom(pixels, factor, cursorX, cursorY) {
-          console.log('zoom params', factor, cursorX, cursorY)
-          const prevPixelSize = this.pixel.size;
-          console.log('prevPixelSize', prevPixelSize)
-          this.pixel.size *= factor;
-
-          const minPixelSize = this.grid.width / 100;
-          const maxPixelSize = this.grid.height / 0.1;
-
-          this.pixel.size = Math.max(
-            minPixelSize,
-            Math.min(maxPixelSize, this.pixel.size),
-          );
-
-
-          this.offset = {
-              x: (this.offset.x - cursorX) * (this.pixel.size / prevPixelSize) + cursorX,
-              y: (this.offset.y - cursorY) * (this.pixel.size / prevPixelSize) + cursorY
-          }
-          
-          this.drawCanvas(pixels);
-          this.drawCursor(cursorX, cursorY)
-        }
-
-        onGridHover(x, y) {
-          const isGridHovered = 
-            this.offset.x < x &&
-            this.offset.x + this.pixel.size * this.grid.width > x &&
-            this.offset.y < y && 
-            this.offset.y + this.pixel.size * this.grid.height > y 
-
-          this.grid.hovered = isGridHovered;
-        }
-
-        updatePixel(x, y, color) {
-          if (!this.grid.hovered) return;
-
-          const pixel = this.getPixel(x, y)
-
-          const newX = Math.floor(pixel.index % this.grid.width) * this.pixel.size + this.offset.x;
-          const newY = Math.floor(pixel.index / this.grid.width) * this.pixel.size + this.offset.y;
-
-          this.context.fillStyle = color;
-          this.context.fillRect(newX, newY, this.pixel.size, this.pixel.size);
-        }
-
-        getPixel(x, y) {
-          const pixelI = Math.floor((x - this.offset.x) / this.pixel.size);
-          const pixelJ = Math.floor((y - this.offset.y) / this.pixel.size);
-          const index = pixelJ * this.grid.width + pixelI;
-
-          return {
-            i: pixelI,
-            j: pixelJ,
-            index
-          }
-        }
-
-        drawCursor(x, y) {
-          const cursor = document.getElementById('cursor');
-          const info = document.getElementById('info');
-  
-          if (!this.grid.hovered) { 
-              cursor.style.display = 'none';
-              info.style.display = 'none';
-              return 
-          };
-
-          const pixel = this.getPixel(x, y)
-
-          const newX = Math.floor(pixel.index % this.grid.width) * this.pixel.size + this.offset.x;
-          const newY = Math.floor(pixel.index / this.grid.width) * this.pixel.size + this.offset.y;
-
-          cursor.style.display = 'block';
-          cursor.style.left = `${newX}px`;
-          cursor.style.top = `${newY}px`;
-          cursor.style.width = `${this.pixel.size}px`;
-          cursor.style.height = `${this.pixel.size}px`;
-
-          info.style.display = 'block';
-          info.innerHTML = `${pixel.i + 1}:${pixel.j + 1}`
-        }
-      }
-
-      const width = 20;
-      const height = 20;
-      const canvas = new Canvas(width, height);
-    </script>
-
-    <script>
-      document.addEventListener('mousemove', (event) => {
-        canvas.onGridHover(event.clientX, event.clientY);
-        canvas.drawCursor(event.clientX, event.clientY);
-      })
-
-      document.addEventListener('click', (event) => {
-        canvas.updatePixel(event.clientX, event.clientY, currentColor);
-      })
-
-      document.addEventListener('wheel', () => {
-        canvas.zoom()
-      })
-    </script>
-
-    <script>
       let uri = 'ws:';
 
       if (location.protocol === 'https:')  uri = 'wss:';
@@ -243,14 +230,17 @@
         const typeBuffer = await event.data.slice(0,1);
         const [type] = new Int8Array(await typeBuffer.arrayBuffer());
         
+        console.log('TYPE MESSAGE', type);
         if (type === SOCKETS_MESSAGES.STATE) {
-          const sizeBuffer = await event.data.slice(1,2);
-          const [width, heigth] = new Int8Array(await sizeBuffer.arrayBuffer());
+          const sizeBuffer = await event.data.slice(1,3);
+          const [width, height] = new Int8Array(await sizeBuffer.arrayBuffer());
           console.log('WIDHT:', width);
           console.log('HEIGHT:', height);
 
           const pixelsBuffer = await event.data.slice(3, width * height + 3);
           pixels = new Int8Array(await pixelsBuffer.arrayBuffer());
+
+          canvas.setSize(width, height);
           canvas.drawCanvas(pixels);
         }
       }
@@ -258,6 +248,21 @@
       socket.onclose = () => {
         console.log('DISCONNECTED');
       };
+    </script>
+    <script>
+      document.addEventListener('mousemove', (event) => {
+        canvas.onGridHover(event.clientX, event.clientY);
+        canvas.drawCursor(event.clientX, event.clientY);
+      })
+
+      document.addEventListener('click', (event) => {
+        const pixel = canvas.updatePixel(event.clientX, event.clientY, currentColor);
+        socket.send(new Blob([pixel.index, color]));
+      })
+
+      document.addEventListener('wheel', () => {
+        canvas.zoom()
+      })
     </script>
   </body>
 </html>
