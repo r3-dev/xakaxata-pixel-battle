@@ -42,6 +42,7 @@
       };
 
       const paletteContainer = document.createElement('div');
+      paletteContainer.id = '';
       paletteContainer.className = 'absolute b-0 r-0 l-0';
       Object.values(COLOR_MAP).forEach(color => {
         const colorContainer = document.createElement('div');
@@ -156,7 +157,7 @@
     </script>
 
     <script>
-      const uri = 'ws:';
+      let uri = 'ws:';
 
       if (location.protocol === 'https:')  uri = 'wss:';
       uri += '//' + location.host;
