@@ -90,7 +90,7 @@ func main() {
 	g := game.New()
 
 	e.Use(middleware.Logger())
-	// e.Use(middleware.Recover())
+	e.Use(middleware.Recover())
 	e.Use(echoprometheus.NewMiddleware("pixelbattle")) // adds middleware to gather metrics
 	e.Use(middleware.BodyLimit("2M"))
 	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(rate.Limit(20))))

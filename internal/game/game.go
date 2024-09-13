@@ -1,7 +1,6 @@
 package game
 
 import (
-	"fmt"
 	"math/rand"
 	"net/http"
 	"time"
@@ -202,8 +201,6 @@ func (g *Game) WsHandler(c echo.Context) error {
 				chunk := int(b[1])
 				i := int(b[2])
 				c := Color(b[3])
-
-				fmt.Printf("Migrate state %d %d %d\n", chunk, i, c)
 
 				g.MigrateState(chunk, i, c)
 
