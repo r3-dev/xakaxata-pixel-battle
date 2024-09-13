@@ -1,0 +1,7 @@
+version: "3"
+
+tasks:
+  dev:
+    cmds:
+      - go run github.com/cosmtrek/air@v1.51.0 -c .air.toml
+    silent: true
