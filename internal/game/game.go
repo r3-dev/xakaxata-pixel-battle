@@ -67,15 +67,16 @@ type Game struct {
 
 	// game state
 	state          *State
-	stateMigration []*StateMigration
+	stateMigration map[int]*StateMigration
 }
 
 func New() *Game {
 	game := &Game{
-		players:  make(map[string]*Player),
-		state:    newState(),
-		mapSizeX: mapSizeX,
-		mapSizeY: mapSizeY,
+		players:        make(map[string]*Player),
+		state:          newState(),
+		mapSizeX:       mapSizeX,
+		mapSizeY:       mapSizeY,
+		stateMigration: make(map[int]*StateMigration),
 	}
 
 	go gameLoop(game)
@@ -109,10 +110,10 @@ func (g *Game) RemovePlayer(player *Player) {
 }
 
 func (g *Game) MigrateState(i int, c Color) {
-	g.stateMigration = append(g.stateMigration, &StateMigration{
+	g.stateMigration[i] = &StateMigration{
 		index: i,
 		color: c,
-	})
+	}
 }
 
 var (
@@ -177,11 +178,15 @@ func (g *Game) WsHandler(c echo.Context) error {
 
 			switch int(b[0]) {
 			case StateMigrationMessage:
-				g.MigrateState(int(b[1]), Color(b[2]))
+				i := int(b[1])
+				c := Color(b[2])
+
+				fmt.Printf("Migrate state %d %d", i, c)
+
+				g.MigrateState(i, c)
 			}
 		}
 
-		fmt.Printf("%s\n", msg)
 	}
 }
 
@@ -192,7 +197,7 @@ func gameLoop(g *Game) {
 	for {
 		select {
 		case <-ticker.C:
-			if g.stateMigration == nil {
+			if len(g.stateMigration) == 0 {
 				continue
 			}
 
@@ -201,9 +206,11 @@ func gameLoop(g *Game) {
 
 			b[0] = byte(StateMigrationMessage)
 
-			for i, c := range g.stateMigration {
-				b[i*2+1] = byte(c.index)
-				b[i*2+2] = byte(c.color)
+			i := 1
+			for _, v := range g.stateMigration {
+				b[i] = byte(v.index)
+				b[i+1] = byte(v.color)
+				i = i + 2
 			}
 
 			println("Send new state")
@@ -214,7 +221,7 @@ func gameLoop(g *Game) {
 				}
 			}
 
-			g.stateMigration = nil
+			g.stateMigration = make(map[int]*StateMigration) // reset stateMigration
 		}
 	}
 }
