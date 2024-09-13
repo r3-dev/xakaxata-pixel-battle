@@ -5,13 +5,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"go-echo-sandbox/internal/game"
 	"go-echo-sandbox/ui"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gorilla/sessions"
@@ -86,30 +87,38 @@ func main() {
 	}
 
 	e := echo.New()
-	e.Use(middleware.Recover())
+	g := game.New()
+
 	e.Use(middleware.Logger())
+	// e.Use(middleware.Recover())
 	e.Use(echoprometheus.NewMiddleware("pixelbattle")) // adds middleware to gather metrics
 	e.Use(middleware.BodyLimit("2M"))
 	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(rate.Limit(20))))
 	e.Use(session.Middleware(sessions.NewCookieStore([]byte(os.Getenv("AUTH_SECRET")))))
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5,
+		Skipper: func(c echo.Context) bool {
+			return strings.Contains(c.Path(), "ws") // Change "metrics" for your own path
+		},
 	}))
-
-	go func() {
-		metrics := echo.New()                                // this Echo will run on separate port 8081
-		metrics.GET("/metrics", echoprometheus.NewHandler()) // adds route to serve gathered metrics
-		if err := metrics.Start(":3001"); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal(err)
-		}
-	}()
 
 	e.Renderer = ui.UiTemplates
 	e.Static("/static", "ui/.dist")
 
+	e.GET("/ws", g.WsHandler)
+
 	TwitchConfig()
 
 	e.GET("/", func(c echo.Context) error {
+		sess, err := session.Get("session", c)
+		if err != nil {
+			panic(err)
+		}
+
+		if sess.Values["user_id"] == nil {
+			return c.Redirect(http.StatusSeeOther, "/login")
+		}
+
 		return c.Render(http.StatusOK, "IndexPage", "HakaHata")
 	})
 
@@ -254,7 +263,7 @@ func main() {
 			panic(err)
 		}
 
-		return c.Redirect(http.StatusSeeOther, "/me")
+		return c.Redirect(http.StatusSeeOther, "/")
 	})
 
 	e.GET("/api/auth/logout", func(c echo.Context) error {
