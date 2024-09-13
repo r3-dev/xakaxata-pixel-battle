@@ -9,28 +9,27 @@
     <link rel="icon" href="/favicon.ico" />
     <link href="./static/global.css" rel="stylesheet" />
     <script src="./static/global.js"></script>
-
-    <style>
-      .root {
-        --grid-background: #282828
-      }
-    </style>
   </head>
   <body>
     <!-- {{ template "HelloWorldComponent" . }} -->
 
-    <!-- <p class="italic text-red-500">Lets Build Something</p> -->
-    <!-- <p class="italic text-red-500">Lets Build Something</p> -->
-
-    <!-- <div></div> -->
-    <div id='palette'></div>
+    <div id='palette' class='absolute bottom-6 left-0 right-0 flex justify-center'></div>
+    <div id='kit' class='absolute bottom-0 top-0 right-5 flex justify-center'>
+      <div class='flex justify-center gap-2 flex-col'>
+        <button id='zoom-in' class="text-gray-900 bg-white border border-gray-300 focus:outline-none font-medium rounded-lg text-sm px-4 py-2">+</button>
+        <button id='zoom-out' class="text-gray-900 bg-white border border-gray-300 focus:outline-none font-medium rounded-lg text-sm px-4 py-2">-</button>
+      </div>
+    </div>
     <div id='cursor' class='absolute hidden transition-all duration-100 shadow-[0_0_0_2px_#ffffff_inset]'></div>
     <div id='info' class='absolute hidden right-2 bottom-2 p-1 text-md bg-white border border-gray-200 rounded-sm shadow'></div>
     <canvas id="root"></canvas>
     <script>
+      const SOCKETS_MESSAGES = {
+        STATE: 0
+      }
       const PREFIX = 'pixelbattle'
       const LOCAL_STORAGE_KEYS = {
-        COLOR: `${PREFIX}`
+        COLOR: `${PREFIX}_color`
       };
       const COLOR_MAP = {
           0: "#FFFFFF", // white
@@ -44,26 +43,52 @@
           8: "#F05689", // pink
           9: "#000000", // black
       };
+
+      let pixels = [];
+      let currentColor = localStorage.getItem(LOCAL_STORAGE_KEYS.COLOR) ?? COLOR_MAP[0];
     </script>
     <script>
-      let currentColor = localStorage.getItem(LOCAL_STORAGE_KEYS.COLOR) ?? COLOR_MAP[1];
-
+      // palette block
       const palette = document.getElementById('palette');
-      palette.className = 'absolute bottom-6 left-0 right-0 flex justify-center';
       const paletteContainer = document.createElement('div');
-      paletteContainer.className = 'flex gap-2.5 justify-center bg-black/30 rounded-lg p-4';
+      paletteContainer.id = 'paletteContainer';
+      paletteContainer.className = 'flex gap-1.5 justify-center bg-black/30 rounded-lg p-4 ';
 
       Object.values(COLOR_MAP).forEach(color => {
         const colorContainer = document.createElement('div');
-        colorContainer.className = 'size-10 cursor-pointer rounded-full outline-offset-1 hover:outline-dashed';
+        colorContainer.className = 'size-10 cursor-pointer rounded-full border-[#282828] border-2';
         colorContainer.style.backgroundColor = color;
         paletteContainer.appendChild(colorContainer);
-        if (color === currentColor) {
-          colorContainer.className += ' outline outline-2 outline-white'
-        }
+        
+        if (color === currentColor) colorContainer.classList.add('border-white');
+
+        colorContainer.addEventListener('click', () => {
+          const colorContainers = document.getElementById('paletteContainer').children;
+          for (let i = 0; i < colorContainers.length; i++) {
+            if (colorContainers[i].classList.contains('border-white')) {
+              colorContainers[i].classList.remove('border-white');
+              colorContainers[i].classList.add('border-[#282828]');
+            }
+          };
+          colorContainer.classList.add('border-white');
+          localStorage.setItem(LOCAL_STORAGE_KEYS.COLOR, color);
+          currentColor = color;
+        });
       })
 
       palette.appendChild(paletteContainer);
+    </script>
+    <script>
+      // kit block
+      const zoomIn = document.getElementById('zoom-in');
+      const zoomOut = document.getElementById('zoom-out');
+
+      zoomIn.addEventListener('click', () => {
+        canvas.zoom(pixels, 1.2, window.innerWidth / 2, window.innerHeight / 2);
+      })
+      zoomOut.addEventListener('click', () => {
+        canvas.zoom(pixels, 0.8, window.innerWidth / 2, window.innerHeight / 2);
+      })
     </script>
     <script>
       class Canvas {
@@ -97,6 +122,30 @@
             });
         }
 
+        zoom(pixels, factor, cursorX, cursorY) {
+          console.log('zoom params', factor, cursorX, cursorY)
+          const prevPixelSize = this.pixel.size;
+          console.log('prevPixelSize', prevPixelSize)
+          this.pixel.size *= factor;
+
+          const minPixelSize = this.grid.width / 100;
+          const maxPixelSize = this.grid.height / 0.1;
+
+          this.pixel.size = Math.max(
+            minPixelSize,
+            Math.min(maxPixelSize, this.pixel.size),
+          );
+
+
+          this.offset = {
+              x: (this.offset.x - cursorX) * (this.pixel.size / prevPixelSize) + cursorX,
+              y: (this.offset.y - cursorY) * (this.pixel.size / prevPixelSize) + cursorY
+          }
+          
+          this.drawCanvas(pixels);
+          this.drawCursor(cursorX, cursorY)
+        }
+
         onGridHover(x, y) {
           const isGridHovered = 
             this.offset.x < x &&
@@ -110,15 +159,25 @@
         updatePixel(x, y, color) {
           if (!this.grid.hovered) return;
 
-          const pixelX = Math.floor((x - this.offset.x) / this.pixel.size);
-          const pixelY = Math.floor((y - this.offset.y) / this.pixel.size);
-          const index = pixelY * this.grid.width + pixelX;
+          const pixel = this.getPixel(x, y)
 
-          const newX = Math.floor(index % this.grid.width) * this.pixel.size + this.offset.x;
-          const newY = Math.floor(index / this.grid.width) * this.pixel.size + this.offset.y;
+          const newX = Math.floor(pixel.index % this.grid.width) * this.pixel.size + this.offset.x;
+          const newY = Math.floor(pixel.index / this.grid.width) * this.pixel.size + this.offset.y;
 
           this.context.fillStyle = color;
           this.context.fillRect(newX, newY, this.pixel.size, this.pixel.size);
+        }
+
+        getPixel(x, y) {
+          const pixelI = Math.floor((x - this.offset.x) / this.pixel.size);
+          const pixelJ = Math.floor((y - this.offset.y) / this.pixel.size);
+          const index = pixelJ * this.grid.width + pixelI;
+
+          return {
+            i: pixelI,
+            j: pixelJ,
+            index
+          }
         }
 
         drawCursor(x, y) {
@@ -131,12 +190,10 @@
               return 
           };
 
-          const pixelX = Math.floor((x - this.offset.x) / this.pixel.size);
-          const pixelY = Math.floor((y - this.offset.y) / this.pixel.size);
-          const index = pixelY * this.grid.width + pixelX;
+          const pixel = this.getPixel(x, y)
 
-          const newX = Math.floor(index % this.grid.width) * this.pixel.size + this.offset.x;
-          const newY = Math.floor(index / this.grid.width) * this.pixel.size + this.offset.y;
+          const newX = Math.floor(pixel.index % this.grid.width) * this.pixel.size + this.offset.x;
+          const newY = Math.floor(pixel.index / this.grid.width) * this.pixel.size + this.offset.y;
 
           cursor.style.display = 'block';
           cursor.style.left = `${newX}px`;
@@ -145,14 +202,13 @@
           cursor.style.height = `${this.pixel.size}px`;
 
           info.style.display = 'block';
-          info.innerHTML = `${pixelX + 1}:${pixelY + 1}`
+          info.innerHTML = `${pixel.i + 1}:${pixel.j + 1}`
         }
       }
 
       const width = 20;
       const height = 20;
       const canvas = new Canvas(width, height);
-      canvas.drawCanvas([...Array(width*height)].map(() => Math.floor(Math.random() * 10)));
     </script>
 
     <script>
@@ -165,7 +221,9 @@
         canvas.updatePixel(event.clientX, event.clientY, currentColor);
       })
 
-      // document.addEventListener('click')
+      document.addEventListener('wheel', () => {
+        canvas.zoom()
+      })
     </script>
 
     <script>
@@ -178,15 +236,27 @@
       const socket = new WebSocket(uri);
 
       socket.onopen = () => {
-        console.log('@@@');
+        console.log('CONNECTED');
       }
 
-      socket.onmessage = (event) => {
-        console.log('@@@@', event);
+      socket.onmessage = async (event) => {
+        const typeBuffer = await event.data.slice(0,1);
+        const [type] = new Int8Array(await typeBuffer.arrayBuffer());
+        
+        if (type === SOCKETS_MESSAGES.STATE) {
+          const sizeBuffer = await event.data.slice(1,2);
+          const [width, heigth] = new Int8Array(await sizeBuffer.arrayBuffer());
+          console.log('WIDHT:', width);
+          console.log('HEIGHT:', height);
+
+          const pixelsBuffer = await event.data.slice(3, width * height + 3);
+          pixels = new Int8Array(await pixelsBuffer.arrayBuffer());
+          canvas.drawCanvas(pixels);
+        }
       }
 
       socket.onclose = () => {
-        console.log("WebSocket connection closed");
+        console.log('DISCONNECTED');
       };
     </script>
   </body>
