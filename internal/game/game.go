@@ -116,6 +116,10 @@ func (g *Game) MigrateState(chunk int, i int, c Color) {
 		index: i,
 		color: c,
 	}
+
+	compIndex := chunk*256 + i
+
+	g.state.colorMap[compIndex] = c
 }
 
 var (
