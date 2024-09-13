@@ -147,7 +147,8 @@
     </script>
     <script>
       const SOCKETS_MESSAGES = {
-        STATE: 0
+        STATE: 0,
+        STATE_MIGRATION: 1
       }
       const PREFIX = 'pixelbattle'
       const LOCAL_STORAGE_KEYS = {
@@ -167,7 +168,7 @@
       };
 
       let pixels = [];
-      let currentColor = localStorage.getItem(LOCAL_STORAGE_KEYS.COLOR) ?? COLOR_MAP[0];
+      let currentColor = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEYS.COLOR)) ?? { id: 0, value: COLOR_MAP[0] }
       const canvas = new Canvas();
     </script>
     <script>
@@ -177,13 +178,13 @@
       paletteContainer.id = 'paletteContainer';
       paletteContainer.className = 'flex gap-1.5 justify-center bg-black/30 rounded-lg p-4 ';
 
-      Object.values(COLOR_MAP).forEach(color => {
+      Object.entries(COLOR_MAP).forEach(([id, color]) => {
         const colorContainer = document.createElement('div');
         colorContainer.className = 'size-10 cursor-pointer rounded-full border-[#282828] border-2';
         colorContainer.style.backgroundColor = color;
         paletteContainer.appendChild(colorContainer);
         
-        if (color === currentColor) colorContainer.classList.add('border-white');
+        if (color === currentColor.value) colorContainer.classList.add('border-white');
 
         colorContainer.addEventListener('click', () => {
           const colorContainers = document.getElementById('paletteContainer').children;
@@ -194,8 +195,9 @@
             }
           };
           colorContainer.classList.add('border-white');
-          localStorage.setItem(LOCAL_STORAGE_KEYS.COLOR, color);
-          currentColor = color;
+          const updatedCurrentColor = { id, value: color };
+          localStorage.setItem(LOCAL_STORAGE_KEYS.COLOR, JSON.stringify(updatedCurrentColor));
+          currentColor = updatedCurrentColor;
         });
       })
 
@@ -256,8 +258,12 @@
       })
 
       document.addEventListener('click', (event) => {
-        const pixel = canvas.updatePixel(event.clientX, event.clientY, currentColor);
-        socket.send(new Blob([pixel.index, currentColor]));
+        if (!canvas.grid.hovered) return
+        const pixel = canvas.updatePixel(event.clientX, event.clientY, currentColor.value);
+        const array = new Uint8Array([SOCKETS_MESSAGES.STATE_MIGRATION, pixel.index, currentColor.id])
+        console.log('@', new Blob([array.buffer]));
+
+        socket.send(new Blob([array.buffer]), { binary: true });
       })
 
       document.addEventListener('wheel', () => {
