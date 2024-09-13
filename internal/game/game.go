@@ -59,6 +59,12 @@ type Player struct {
 	cooldownAt time.Time
 }
 
+func (p *Player) SendState() {
+	secondsLeft := int(p.cooldownAt.Sub(time.Now()).Seconds())
+
+	p.ws.WriteMessage(websocket.BinaryMessage, []byte{byte(PlayerStateMessage), byte(secondsLeft)})
+}
+
 // game state
 type Game struct {
 	mapSizeX int
@@ -171,6 +177,8 @@ func (g *Game) WsHandler(c echo.Context) error {
 		c.Logger().Error(err)
 	}
 
+	player.SendState()
+
 	for {
 		// Read
 		msgType, msg, err := ws.ReadMessage()
@@ -188,7 +196,6 @@ func (g *Game) WsHandler(c echo.Context) error {
 			switch int(b[0]) {
 			case StateMigrationMessage:
 				if player.cooldownAt.After(time.Now()) {
-					println("cooldown")
 					continue
 				}
 
@@ -201,6 +208,8 @@ func (g *Game) WsHandler(c echo.Context) error {
 				g.MigrateState(chunk, i, c)
 
 				player.cooldownAt = time.Now().Add(coolDown)
+
+				player.SendState()
 			}
 		}
 	}
