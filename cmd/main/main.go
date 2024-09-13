@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"go-echo-sandbox/internal/handlers"
+	"go-echo-sandbox/internal/game"
 	"go-echo-sandbox/ui"
 	"io"
 	"log"
@@ -86,6 +86,8 @@ func main() {
 	}
 
 	e := echo.New()
+	g := game.New()
+
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(echoprometheus.NewMiddleware("pixelbattle")) // adds middleware to gather metrics
@@ -99,7 +101,7 @@ func main() {
 	e.Renderer = ui.UiTemplates
 	e.Static("/static", "ui/.dist")
 
-	e.GET("/ws", handlers.Ws)
+	e.GET("/ws", g.WsHandler)
 
 	TwitchConfig()
 
