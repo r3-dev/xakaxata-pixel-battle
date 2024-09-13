@@ -15,7 +15,7 @@
 
     <div id='palette' class='absolute bottom-6 left-0 right-0 flex justify-center'></div>
     <div id='kit' class='absolute bottom-0 top-0 right-5 flex justify-center'>
-      <div class='flex justify-center gap-2 flex-col'>
+      <div class='flex justify-center gap-2 flex-col z-50'>
         <button id='zoom-in' class="text-gray-900 bg-white border border-gray-300 focus:outline-none font-medium rounded-lg text-sm px-4 py-2">+</button>
         <button id='zoom-out' class="text-gray-900 bg-white border border-gray-300 focus:outline-none font-medium rounded-lg text-sm px-4 py-2">-</button>
       </div>
@@ -33,6 +33,9 @@
             
           canvas.width = window.innerWidth;
           canvas.height = window.innerHeight;
+
+          this.offset = { x: 0, y: 0 };
+          this.pixel = { size: 0 };
         }
 
         setSize(width, height) {
@@ -58,6 +61,11 @@
                 this.context.fillStyle = color;
                 this.context.fillRect(x, y, this.pixel.size, this.pixel.size);
             });
+        }
+
+        setOffset(x, y) {
+          this.offset.x = x;
+          this.offset.y = y;
         }
 
         zoom(pixels, factor, cursorX, cursorY) {
@@ -91,6 +99,14 @@
             this.offset.y + this.pixel.size * this.grid.height > y 
 
           this.grid.hovered = isGridHovered;
+        }
+
+        updatePixelByIndex(index, color) {
+          const newX = Math.floor(index % this.grid.width) * this.pixel.size + this.offset.x;
+          const newY = Math.floor(index / this.grid.width) * this.pixel.size + this.offset.y;
+
+          this.context.fillStyle = color;
+          this.context.fillRect(newX, newY, this.pixel.size, this.pixel.size);
         }
 
         updatePixel(x, y, color) {
@@ -239,11 +255,28 @@
           console.log('WIDHT:', width);
           console.log('HEIGHT:', height);
 
-          const pixelsBuffer = await event.data.slice(3, width * height + 3);
+          const pixelsBuffer = await event.data.slice(3);
           pixels = new Int8Array(await pixelsBuffer.arrayBuffer());
 
           canvas.setSize(width, height);
           canvas.drawCanvas(pixels);
+        }
+
+        if (type === SOCKETS_MESSAGES.STATE_MIGRATION) {
+          const migrationBuffer = await event.data.slice(1);
+          const migrations = new Int8Array(await migrationBuffer.arrayBuffer());
+          console.log('@migrations', migrations)
+
+          const updatedPixels = []
+          const pars = migrations.length / 2;
+          for (let i = 0; i < pars; i++) {
+            updatedPixels[i] = [migrations[i * 2], migrations[i * 2 + 1]];
+          }
+
+          console.log('@@@updatedPixels', updatedPixels)
+          updatedPixels.forEach(([index, color]) => {
+            canvas.updatePixelByIndex(index, color)
+          })
         }
       }
 
@@ -252,6 +285,12 @@
       };
     </script>
     <script>
+      let isDraging = false;
+
+      document.addEventListener('mousedown', (event) => {
+        isDraging = true;
+      })
+
       document.addEventListener('mousemove', (event) => {
         canvas.onGridHover(event.clientX, event.clientY);
         canvas.drawCursor(event.clientX, event.clientY);
@@ -260,14 +299,24 @@
       document.addEventListener('click', (event) => {
         if (!canvas.grid.hovered) return
         const pixel = canvas.updatePixel(event.clientX, event.clientY, currentColor.value);
-        const array = new Uint8Array([SOCKETS_MESSAGES.STATE_MIGRATION, pixel.index, currentColor.id])
-        console.log('@', new Blob([array.buffer]));
-
-        socket.send(new Blob([array.buffer]), { binary: true });
+        console.log('UPDATE PIXEL', pixel);
+        socket.send(new Blob([new Uint8Array([SOCKETS_MESSAGES.STATE_MIGRATION, pixel.index, currentColor.id])]), { binary: true });
       })
 
-      document.addEventListener('wheel', () => {
-        canvas.zoom()
+      document.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
+        canvas.zoom(pixels, zoomFactor, event.clientX, event.clientY);
+      });
+
+      let clickX = 0;
+      let clickY = 0;
+
+      document.addEventListener("mousemove", (event) => {
+        canvas.setOffset(canvas.offset.x + (event.clientX - clickX), canvas.offset.y + (event.clientY - clickY));
+        clickX = event.clientX;
+        clickY = event.clientY;
+        canvas.drawCanvas(pixels);
       })
     </script>
   </body>
