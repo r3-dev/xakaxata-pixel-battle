@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -13,11 +14,12 @@ import (
 )
 
 var (
-	tickRate = 1000 * time.Millisecond
-	mapSizeX = 2
-	mapSizeY = 1
-	mapSize  = mapSizeX * mapSizeY * 256 * 256
-	coolDown = 5 * time.Second
+	tickRate     = 100 * time.Millisecond
+	tickRateLazy = 5000 * time.Millisecond
+	mapSizeX     = 1
+	mapSizeY     = 1
+	mapSize      = mapSizeX * mapSizeY * 256 * 256
+	coolDown     = 5 * time.Second
 )
 
 type Color int
@@ -39,6 +41,7 @@ const (
 	StateMessage int = iota
 	StateMigrationMessage
 	PlayerStateMessage
+	PlayerCounterMessage
 )
 
 // game state with colormap index
@@ -69,6 +72,14 @@ func (p *Player) SendPlayerState() {
 	}
 
 	p.ws.WriteMessage(websocket.BinaryMessage, []byte{byte(PlayerStateMessage), byte(secondsLeft)})
+}
+
+func (p *Player) SendPlayerCounter(counter int) {
+	counterString := strconv.Itoa(counter)
+	t := []byte{byte(PlayerCounterMessage)}
+	byteCounterString := []byte(counterString)
+
+	p.ws.WriteMessage(websocket.TextMessage, append(t, byteCounterString...))
 }
 
 // game state
@@ -256,6 +267,8 @@ func gameLoop(g *Game) {
 	ticker := time.NewTicker(tickRate)
 	defer ticker.Stop()
 
+	tickerLazy := time.NewTicker(tickRateLazy)
+
 	for {
 		select {
 		case <-ticker.C:
@@ -284,6 +297,10 @@ func gameLoop(g *Game) {
 			}
 
 			g.stateMigration = make(map[int]*StateMigration) // reset stateMigration
+		case <-tickerLazy.C:
+			for _, player := range g.players {
+				player.SendPlayerCounter(len(g.players))
+			}
 		}
 	}
 }
