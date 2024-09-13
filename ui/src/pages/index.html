@@ -9,12 +9,173 @@
     <link rel="icon" href="/favicon.ico" />
     <link href="./static/global.css" rel="stylesheet" />
     <script src="./static/global.js"></script>
+
+    <style>
+      .root {
+        --grid-background: #282828
+      }
+    </style>
   </head>
   <body>
-    {{ template "HelloWorldComponent" . }}
+    <!-- {{ template "HelloWorldComponent" . }} -->
 
-    <p class="italic text-red-500">Lets Build Something</p>
-    <p class="italic text-red-500">Lets Build Something</p>
+    <!-- <p class="italic text-red-500">Lets Build Something</p> -->
+    <!-- <p class="italic text-red-500">Lets Build Something</p> -->
+
+    <!-- <div></div> -->
+    <div id='cursor' class='absolute hidden transition-all duration-100 shadow-[0_0_0_2px_#ffffff_inset]'></div>
+    <div id='info' class='absolute hidden right-2 bottom-2 p-1 text-md bg-white border border-gray-200 rounded-sm shadow'></div>
+    <div id='palette'></div>
+    <canvas id="root"></canvas>
+    <script>
+      const COLOR_MAP = {
+          0: "#FFFFFF", // white
+          1: "#74B63E", // green
+          2: "#FFCE33", // yellow
+          3: "#CC421D", // red
+          4: "#FF8533", // orange
+          5: "#87308C", // purple
+          6: "#1D70A2", // blue
+          7: "#079D9D", // teal
+          8: "#F05689", // pink
+          9: "#000000", // black
+      };
+
+      const paletteContainer = document.createElement('div');
+      paletteContainer.className = 'absolute b-0 r-0 l-0';
+      Object.values(COLOR_MAP).forEach(color => {
+        const colorContainer = document.createElement('div');
+        colorContainer.className = `size-6 bg-[${color}]`;
+        paletteContainer.appendChild(colorContainer);
+      })
+
+      document.body.appendChild(paletteContainer);
+      
+    </script>
+    <script>
+      let currentColor = COLOR_MAP[0];
+
+      class Canvas {
+        constructor(width, height) {
+          const canvas = document.getElementById('root');
+          this.element = canvas;
+          this.context = canvas.getContext("2d");
+          this.grid = { width, height, hovered: false };
+            
+          canvas.width = window.innerWidth;
+          canvas.height = window.innerHeight;
+
+          this.pixel = { size: Math.floor(window.innerWidth / this.grid.width) / 2 }
+          this.offset = {
+            x: window.innerWidth / 2 - this.pixel.size * this.grid.width / 2,
+            y: window.innerHeight / 2 - this.pixel.size * this.grid.height / 2
+          }
+        }
+
+        drawCanvas(pixels) {
+            this.context.fillStyle = "#282828";
+            this.context.fillRect(0, 0, this.element.width, this.element.height);
+
+            pixels.forEach((pixel, i) => {
+                const x = Math.floor(i % this.grid.width) * this.pixel.size + this.offset.x;
+                const y = Math.floor(i / this.grid.width) * this.pixel.size + this.offset.y;
+                const color = COLOR_MAP[pixels[i]];
+                
+                this.context.fillStyle = color;
+                this.context.fillRect(x, y, this.pixel.size, this.pixel.size);
+            });
+        }
+
+        onGridHover(x, y) {
+          const isGridHovered = 
+            this.offset.x < x &&
+            this.offset.x + this.pixel.size * this.grid.width > x &&
+            this.offset.y < y && 
+            this.offset.y + this.pixel.size * this.grid.height > y 
+
+          this.grid.hovered = isGridHovered;
+        }
+
+        updatePixel(x, y, color) {
+          if (!this.grid.hovered) return;
+
+          const pixelX = Math.floor((x - this.offset.x) / this.pixel.size);
+          const pixelY = Math.floor((y - this.offset.y) / this.pixel.size);
+          const index = pixelY * this.grid.width + pixelX;
+
+          const newX = Math.floor(index % this.grid.width) * this.pixel.size + this.offset.x;
+          const newY = Math.floor(index / this.grid.width) * this.pixel.size + this.offset.y;
+
+          this.context.fillStyle = color;
+          this.context.fillRect(newX, newY, this.pixel.size, this.pixel.size);
+        }
+
+        drawCursor(x, y) {
+          const cursor = document.getElementById('cursor');
+          const info = document.getElementById('info');
+  
+          if (!this.grid.hovered) { 
+              cursor.style.display = 'none';
+              info.style.display = 'none';
+              return 
+          };
+
+          const pixelX = Math.floor((x - this.offset.x) / this.pixel.size);
+          const pixelY = Math.floor((y - this.offset.y) / this.pixel.size);
+          const index = pixelY * this.grid.width + pixelX;
+
+          const newX = Math.floor(index % this.grid.width) * this.pixel.size + this.offset.x;
+          const newY = Math.floor(index / this.grid.width) * this.pixel.size + this.offset.y;
+
+          cursor.style.display = 'block';
+          cursor.style.left = `${newX}px`;
+          cursor.style.top = `${newY}px`;
+          cursor.style.width = `${this.pixel.size}px`;
+          cursor.style.height = `${this.pixel.size}px`;
+
+          info.style.display = 'block';
+          info.innerHTML = `${pixelX + 1}:${pixelY + 1}`
+        }
+      }
+
+      const width = 20;
+      const height = 20;
+      const canvas = new Canvas(width, height);
+      canvas.drawCanvas([...Array(width*height)].map(() => Math.floor(Math.random() * 10)));
+    </script>
+
+    <script>
+      document.addEventListener('mousemove', (event) => {
+        canvas.onGridHover(event.clientX, event.clientY);
+        canvas.drawCursor(event.clientX, event.clientY);
+      })
+
+      document.addEventListener('click', (event) => {
+        canvas.updatePixel(event.clientX, event.clientY, currentColor);
+      })
+    </script>
+
+    <script>
+      const uri = 'ws:';
+
+      if (location.protocol === 'https:')  uri = 'wss:';
+      uri += '//' + location.host;
+      uri += location.pathname + 'ws';
+
+      const socket = new WebSocket(uri);
+
+      socket.onopen = () => {
+        console.log('@@@');
+      }
+
+      socket.onmessage = (event) => {
+        console.log('@@@@', data);
+      }
+
+      socket.onclose = () => {
+        console.log("WebSocket connection closed");
+      };
+    </script>
   </body>
 </html>
 {{end}}
