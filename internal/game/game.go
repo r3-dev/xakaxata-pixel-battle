@@ -2,9 +2,9 @@ package game
 
 import (
 	"context"
+	"encoding/binary"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -75,11 +75,11 @@ func (p *Player) SendPlayerState() {
 }
 
 func (p *Player) SendPlayerCounter(counter int) {
-	counterString := strconv.Itoa(counter)
-	t := []byte{byte(PlayerCounterMessage)}
-	byteCounterString := []byte(counterString)
 
-	p.ws.WriteMessage(websocket.BinaryMessage, append(t, byteCounterString...))
+	bs := make([]byte, 4)
+	binary.LittleEndian.AppendUint32(bs, uint32(counter))
+
+	p.ws.WriteMessage(websocket.BinaryMessage, append([]byte{byte(PlayerCounterMessage)}, bs...))
 }
 
 // game state
