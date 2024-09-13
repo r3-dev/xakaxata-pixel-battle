@@ -283,9 +283,7 @@
             const index = chunk * CHUNK_SIZE + chunkIndex;
             const color = COLOR_MAP[colorId];
             canvas.updatePixelByIndex(index, color);
-            console.log('@new', pixels[index])
-            pixels[index] = color;
-            console.log('@old', pixels[index])
+            pixels[index] = colorId;
           })
         }
       }
