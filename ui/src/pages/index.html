@@ -13,7 +13,7 @@
   <body>
     <!-- {{ template "HelloWorldComponent" . }} -->
 
-    <div id='palette' class='absolute bottom-6 left-0 right-0 flex justify-center'></div>
+    <div id='palette' class='absolute bottom-6 left-0 right-0 flex justify-center z-50'></div>
     <div id='kit' class='absolute bottom-0 top-0 right-5 flex justify-center'>
       <div class='flex justify-center gap-2 flex-col z-50'>
         <button id='zoom-in' class="text-gray-900 bg-white border border-gray-300 focus:outline-none font-medium rounded-lg text-sm px-4 py-2">+</button>
@@ -41,7 +41,7 @@
         setSize(width, height) {
           this.grid.width = width;
           this.grid.height = height;
-          this.pixel = { size: Math.floor(window.innerWidth / this.grid.width) / 2 };
+          this.pixel = { size: Math.floor(window.innerWidth / this.grid.width) };
           this.offset = {
             x: window.innerWidth / 2 - this.pixel.size * this.grid.width / 2,
             y: window.innerHeight / 2 - this.pixel.size * this.grid.height / 2
@@ -52,7 +52,6 @@
             this.context.fillStyle = "#282828";
             this.context.fillRect(0, 0, this.element.width, this.element.height);
 
-            console.log('@', this.grid)
             pixels.forEach((pixel, i) => {
                 const x = Math.floor(i % this.grid.width) * this.pixel.size + this.offset.x;
                 const y = Math.floor(i / this.grid.width) * this.pixel.size + this.offset.y;
@@ -72,8 +71,8 @@
           const prevPixelSize = this.pixel.size;
           this.pixel.size *= factor;
 
-          const minPixelSize = this.grid.width / 100;
-          const maxPixelSize = this.grid.height / 0.1;
+          const minPixelSize = this.grid.width / 10000;
+          const maxPixelSize = this.grid.height / 0.001;
 
           this.pixel.size = Math.max(
             minPixelSize,
@@ -166,7 +165,8 @@
     <script>
       const SOCKETS_MESSAGES = {
         STATE: 0,
-        STATE_MIGRATION: 1
+        STATE_MIGRATION: 1,
+        STATE_PLAYER: 2
       }
       const CHUNK_SIZE = 256;
       const PREFIX = 'pixelbattle'
@@ -195,7 +195,7 @@
       const palette = document.getElementById('palette');
       const paletteContainer = document.createElement('div');
       paletteContainer.id = 'paletteContainer';
-      paletteContainer.className = 'flex gap-1.5 justify-center bg-black/30 rounded-lg p-4 ';
+      paletteContainer.className = 'flex gap-1.5 justify-center bg-black/30 rounded-lg p-4 relative';
 
       Object.entries(COLOR_MAP).forEach(([id, color]) => {
         const colorContainer = document.createElement('div');
@@ -205,7 +205,8 @@
         
         if (color === currentColor.value) colorContainer.classList.add('border-white');
 
-        colorContainer.addEventListener('click', () => {
+        colorContainer.addEventListener('click', (event) => {
+          event.stopPropagation();
           const colorContainers = document.getElementById('paletteContainer').children;
           for (let i = 0; i < colorContainers.length; i++) {
             if (colorContainers[i].classList.contains('border-white')) {
@@ -227,10 +228,12 @@
       const zoomIn = document.getElementById('zoom-in');
       const zoomOut = document.getElementById('zoom-out');
 
-      zoomIn.addEventListener('click', () => {
+      zoomIn.addEventListener('click', (event) => {
+        event.stopPropagation();
         canvas.zoom(pixels, 1.2, window.innerWidth / 2, window.innerHeight / 2);
       })
       zoomOut.addEventListener('click', () => {
+        event.stopPropagation();
         canvas.zoom(pixels, 0.8, window.innerWidth / 2, window.innerHeight / 2);
       })
     </script>
@@ -270,7 +273,6 @@
         if (type === SOCKETS_MESSAGES.STATE_MIGRATION) {
           const migrationBuffer = await event.data.slice(1);
           const migrations = new Uint8Array(await migrationBuffer.arrayBuffer());
-          console.log('@migrations', migrations)
 
           const updatedPixels = []
           const pars = migrations.length / 3;
@@ -278,13 +280,16 @@
             updatedPixels[i] = [migrations[i * 3], migrations[i * 3 + 1], migrations[i * 3 + 2]];
           }
 
-          console.log('@updated pixels', updatedPixels)
           updatedPixels.forEach(([chunk, chunkIndex, colorId]) => {
             const index = chunk * CHUNK_SIZE + chunkIndex;
             const color = COLOR_MAP[colorId];
             canvas.updatePixelByIndex(index, color);
             pixels[index] = colorId;
           })
+        }
+
+        if (type === SOCKETS_MESSAGES.STATE_PLAYER) {
+
         }
       }
 
@@ -293,6 +298,7 @@
       };
     </script>
     <script>
+      let isDelay = false;
       let isDraging = false;
       let clickX = 0;
       let clickY = 0;
@@ -307,12 +313,24 @@
       })
 
       document.addEventListener('click', (event) => {
-        if (!canvas.grid.hovered) return
-        // const pixel = canvas.updatePixel(event.clientX, event.clientY, currentColor.value);
+        if (!canvas.grid.hovered || isDelay) return
+        const pixel = canvas.updatePixel(event.clientX, event.clientY, currentColor.value);
+        pixels[pixel.index] = currentColor.id;
         // console.log('UPDATE PIXEL', pixel);
-        const pixel = canvas.getPixel(event.clientX, event.clientY);
-
+        // const pixel = canvas.getPixel(event.clientX, event.clientY);
         const chunk = Math.floor(pixel.index / CHUNK_SIZE);
+
+        const paletteContainer = document.getElementById('paletteContainer');
+        const delayBanner = document.createElement('div');
+        delayBanner.className = 'bg-black/80 absolute w-full top-0 bottom-0 left-0 right-0 text-white rounded-lg flex justify-center items-center'
+        delayBanner.innerHTML = 'Delay';
+        isDelay = true;
+        paletteContainer.appendChild(delayBanner);
+        setTimeout(() => {
+          isDelay = false;
+          delayBanner.remove();
+        }, 5000)
+
         socket.send(new Blob([new Uint8Array([SOCKETS_MESSAGES.STATE_MIGRATION, chunk, pixel.index - chunk * CHUNK_SIZE, currentColor.id])]), { binary: true });
       })
 
@@ -338,6 +356,10 @@
         clickX = event.clientX;
         clickY = event.clientY;
         canvas.drawCanvas(pixels);
+      })
+
+      window.addEventListener('resize', () => {
+        canvas.drawCanvas();
       })
     </script>
   </body>

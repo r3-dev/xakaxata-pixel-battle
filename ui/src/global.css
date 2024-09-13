@@ -7,3 +7,7 @@
         @apply outline-white
     }
 }
+
+body {
+    background-color: #282828;
+}
