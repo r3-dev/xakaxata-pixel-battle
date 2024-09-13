@@ -266,7 +266,6 @@
       }
 
       socket.onmessage = async (event) => {
-        console.log('@@@', event.data)
         const typeBuffer = await event.data.slice(0,1);
         const [type] = new Uint8Array(await typeBuffer.arrayBuffer());
         
@@ -296,7 +295,6 @@
             updatedPixels[i] = [migrations[i * 3], migrations[i * 3 + 1], migrations[i * 3 + 2]];
           }
 
-          console.log('@updatedPixels', updatedPixels);
           updatedPixels.forEach(([chunk, chunkIndex, colorId]) => {
             const index = chunk * CHUNK_SIZE + chunkIndex;
             const color = COLOR_MAP[colorId];
@@ -325,8 +323,7 @@
 
         if (type === SOCKETS_MESSAGES.STATE_PLAYERS) {
           const countBuffer = await event.data.slice(1);
-          const [count] = new Uint32Array(await countBuffer.arrayBuffer());
-          console.log('@@@@', count);
+          const [count, count2, count3] = new Uint32Array(await countBuffer.arrayBuffer());
           const users = document.getElementById('users');
           users.innerHTML = count;
         }
@@ -334,6 +331,9 @@
 
       socket.onclose = () => {
         console.log('DISCONNECTED');
+        setTimeout(() => {
+          window.reload();
+        }, 1000)
       };
     </script>
     <script>
@@ -360,7 +360,6 @@
         pixels[pixel.index] = currentColor.id;
         const chunk = Math.floor(pixel.index / CHUNK_SIZE);
         
-        console.log('@updatedPixels', chunk, pixel.index - chunk * CHUNK_SIZE, currentColor.id);
         socket.send(new Blob([new Uint8Array([SOCKETS_MESSAGES.STATE_MIGRATION, chunk, pixel.index - chunk * CHUNK_SIZE, currentColor.id])]), { binary: true });
       })
 
