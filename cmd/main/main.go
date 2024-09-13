@@ -86,7 +86,15 @@ func main() {
 	}
 
 	e := echo.New()
+	e.Use(middleware.Recover())
+	e.Use(middleware.Logger())
 	e.Use(echoprometheus.NewMiddleware("pixelbattle")) // adds middleware to gather metrics
+	e.Use(middleware.BodyLimit("2M"))
+	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(rate.Limit(20))))
+	e.Use(session.Middleware(sessions.NewCookieStore([]byte(os.Getenv("AUTH_SECRET")))))
+	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
+		Level: 5,
+	}))
 
 	go func() {
 		metrics := echo.New()                                // this Echo will run on separate port 8081
@@ -99,10 +107,6 @@ func main() {
 	e.Renderer = ui.UiTemplates
 	e.Static("/static", "ui/.dist")
 
-	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(rate.Limit(20))))
-
-	e.Use(session.Middleware(sessions.NewCookieStore([]byte(os.Getenv("AUTH_SECRET")))))
-
 	TwitchConfig()
 
 	e.GET("/", func(c echo.Context) error {
@@ -112,7 +116,7 @@ func main() {
 	e.GET("/me", func(c echo.Context) (err error) {
 		sess, err := session.Get("session", c)
 		if err != nil {
-			return err
+			panic(err)
 		}
 
 		if sess.Values["user_id"] == nil {
@@ -146,7 +150,7 @@ func main() {
 		// generate session for user
 		sess, err := session.Get("session", c)
 		if err != nil {
-			return err
+			panic(err)
 		}
 
 		sess.Options = &sessions.Options{
@@ -157,7 +161,7 @@ func main() {
 
 		sess.Values["twitch_auth_state"] = state_key
 		if err := sess.Save(c.Request(), c.Response()); err != nil {
-			return err
+			panic(err)
 		}
 
 		// save state to kv store by session id
@@ -176,7 +180,7 @@ func main() {
 
 		sess, err := session.Get("session", c)
 		if err != nil {
-			return err
+			panic(err)
 		}
 
 		id, ok := sess.Values["twitch_auth_state"].(string)
@@ -247,7 +251,7 @@ func main() {
 
 		sess.Values["user_id"] = user.ID
 		if err := sess.Save(c.Request(), c.Response()); err != nil {
-			return err
+			panic(err)
 		}
 
 		return c.Redirect(http.StatusSeeOther, "/me")
@@ -256,7 +260,7 @@ func main() {
 	e.GET("/api/auth/logout", func(c echo.Context) error {
 		sess, err := session.Get("session", c)
 		if err != nil {
-			return err
+			panic(err)
 		}
 
 		delete(sess.Values, "user_id")
@@ -269,7 +273,7 @@ func main() {
 
 		err = sess.Save(c.Request(), c.Response())
 		if err != nil {
-			return err
+			panic(err)
 		}
 
 		return c.Redirect(http.StatusSeeOther, "/")
