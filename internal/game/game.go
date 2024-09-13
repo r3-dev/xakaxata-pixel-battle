@@ -46,6 +46,7 @@ type State struct {
 
 // state migration
 type StateMigration struct {
+	chunk int
 	index int
 	color Color
 }
@@ -109,8 +110,9 @@ func (g *Game) RemovePlayer(player *Player) {
 	delete(g.players, player.ID)
 }
 
-func (g *Game) MigrateState(i int, c Color) {
+func (g *Game) MigrateState(chunk int, i int, c Color) {
 	g.stateMigration[i] = &StateMigration{
+		chunk: chunk,
 		index: i,
 		color: c,
 	}
@@ -172,21 +174,21 @@ func (g *Game) WsHandler(c echo.Context) error {
 
 		if msgType == websocket.BinaryMessage {
 			b := msg
-			if len(b) != 3 {
+			if len(b) != 4 {
 				continue
 			}
 
 			switch int(b[0]) {
 			case StateMigrationMessage:
-				i := int(b[1])
-				c := Color(b[2])
+				chunk := int(b[1])
+				i := int(b[2])
+				c := Color(b[3])
 
 				fmt.Printf("Migrate state %d %d", i, c)
 
-				g.MigrateState(i, c)
+				g.MigrateState(chunk, i, c)
 			}
 		}
-
 	}
 }
 
@@ -208,9 +210,10 @@ func gameLoop(g *Game) {
 
 			i := 1
 			for _, v := range g.stateMigration {
-				b[i] = byte(v.index)
-				b[i+1] = byte(v.color)
-				i = i + 2
+				b[i] = byte(v.chunk)
+				b[i+1] = byte(v.index)
+				b[i+2] = byte(v.color)
+				i = i + 3
 			}
 
 			println("Send new state")
