@@ -79,7 +79,7 @@ func (p *Player) SendPlayerCounter(counter int) {
 	t := []byte{byte(PlayerCounterMessage)}
 	byteCounterString := []byte(counterString)
 
-	p.ws.WriteMessage(websocket.TextMessage, append(t, byteCounterString...))
+	p.ws.WriteMessage(websocket.BinaryMessage, append(t, byteCounterString...))
 }
 
 // game state
@@ -228,6 +228,7 @@ func (g *Game) WsHandler(c echo.Context) error {
 	}
 
 	player.SendPlayerState()
+	player.SendPlayerCounter(len(g.players))
 
 	for {
 		// Read
