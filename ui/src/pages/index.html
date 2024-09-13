@@ -257,7 +257,7 @@
 
       document.addEventListener('click', (event) => {
         const pixel = canvas.updatePixel(event.clientX, event.clientY, currentColor);
-        socket.send(new Blob([pixel.index, color]));
+        socket.send(new Blob([pixel.index, currentColor]));
       })
 
       document.addEventListener('wheel', () => {
