@@ -69,9 +69,7 @@
         }
 
         zoom(pixels, factor, cursorX, cursorY) {
-          console.log('zoom params', factor, cursorX, cursorY)
           const prevPixelSize = this.pixel.size;
-          console.log('prevPixelSize', prevPixelSize)
           this.pixel.size *= factor;
 
           const minPixelSize = this.grid.width / 100;
@@ -166,6 +164,7 @@
         STATE: 0,
         STATE_MIGRATION: 1
       }
+      const CHUNK_SIZE = 256;
       const PREFIX = 'pixelbattle'
       const LOCAL_STORAGE_KEYS = {
         COLOR: `${PREFIX}_color`
@@ -288,7 +287,7 @@
       let isDraging = false;
 
       document.addEventListener('mousedown', (event) => {
-        isDraging = true;
+        // isDraging = true;
       })
 
       document.addEventListener('mousemove', (event) => {
@@ -300,7 +299,8 @@
         if (!canvas.grid.hovered) return
         const pixel = canvas.updatePixel(event.clientX, event.clientY, currentColor.value);
         console.log('UPDATE PIXEL', pixel);
-        socket.send(new Blob([new Uint8Array([SOCKETS_MESSAGES.STATE_MIGRATION, pixel.index, currentColor.id])]), { binary: true });
+        const chunk = Math.floor(pixel.index / CHUNK_SIZE);
+        socket.send(new Blob([new Uint8Array([SOCKETS_MESSAGES.STATE_MIGRATION, chunk, pixel.index - chunk * CHUNK_SIZE, currentColor.id])]), { binary: true });
       })
 
       document.addEventListener("wheel", (event) => {
@@ -309,11 +309,12 @@
         canvas.zoom(pixels, zoomFactor, event.clientX, event.clientY);
       });
 
-      let clickX = 0;
-      let clickY = 0;
+      let clickX = canvas.offset.x;
+      let clickY = canvas.offset.y;
 
       document.addEventListener("mousemove", (event) => {
-        canvas.setOffset(canvas.offset.x + (event.clientX - clickX), canvas.offset.y + (event.clientY - clickY));
+        if (!isDraging) return;
+        canvas.setOffset(canvas.offset.x - (event.clientX - clickX), canvas.offset.y - (event.clientY - clickY));
         clickX = event.clientX;
         clickY = event.clientY;
         canvas.drawCanvas(pixels);
