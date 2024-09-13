@@ -5,8 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"go-echo-sandbox/internal/handlers"
 	"go-echo-sandbox/ui"
 	"io"
 	"log"
@@ -86,8 +86,8 @@ func main() {
 	}
 
 	e := echo.New()
-	e.Use(middleware.Recover())
 	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
 	e.Use(echoprometheus.NewMiddleware("pixelbattle")) // adds middleware to gather metrics
 	e.Use(middleware.BodyLimit("2M"))
 	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(rate.Limit(20))))
@@ -96,16 +96,10 @@ func main() {
 		Level: 5,
 	}))
 
-	go func() {
-		metrics := echo.New()                                // this Echo will run on separate port 8081
-		metrics.GET("/metrics", echoprometheus.NewHandler()) // adds route to serve gathered metrics
-		if err := metrics.Start(":3001"); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal(err)
-		}
-	}()
-
 	e.Renderer = ui.UiTemplates
 	e.Static("/static", "ui/.dist")
+
+	e.GET("/ws", handlers.Ws)
 
 	TwitchConfig()
 
