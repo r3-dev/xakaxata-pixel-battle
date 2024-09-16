@@ -11,12 +11,10 @@ import (
 )
 
 var (
-	tickRate     = 100 * time.Millisecond
-	tickRateLazy = 5000 * time.Millisecond
-	mapSizeX     = 1
-	mapSizeY     = 1
-	mapSize      = mapSizeX * mapSizeY * 256 * 256
-	coolDown     = 5 * time.Second
+	mapSizeX = 1
+	mapSizeY = 1
+	mapSize  = mapSizeX * mapSizeY * 256 * 256
+	coolDown = 5 * time.Second
 )
 
 type Color int
@@ -49,8 +47,9 @@ type State struct {
 
 // state migration
 type StateMigration struct {
+	x     int
+	y     int
 	chunk int
-	index int
 	color Color
 }
 
@@ -119,8 +118,8 @@ func (g *Game) MigrateState(chunk int, i int, c Color) {
 	compIndex := chunk*256 + i
 
 	g.state.migrations[compIndex] = &StateMigration{
-		chunk: chunk,
-		index: i,
+		y:     chunk,
+		x:     i,
 		color: c,
 	}
 
@@ -139,8 +138,7 @@ func (g *Game) SendState(p *Player) {
 	for i, c := range g.state.current {
 		b[i+3] = byte(c)
 	}
-
-	p.ws.WriteMessage(websocket.BinaryMessage, b)
+	p.SendMessage(Message{Type: websocket.BinaryMessage, Data: b})
 }
 
 func (g *Game) SetPlayerCooldownAt(id string, value time.Time) {

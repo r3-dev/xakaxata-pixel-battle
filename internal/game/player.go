@@ -7,21 +7,26 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type Message struct {
+	Type int
+	Data []byte
+}
+
 type Player struct {
 	ID         string
 	ws         *websocket.Conn
 	cooldownAt time.Time
+	messages   chan Message
 }
 
 func (p *Player) SendPlayerState() {
-
 	secondsLeft := int(p.cooldownAt.Sub(time.Now()).Seconds())
 
 	if secondsLeft < 0 {
 		secondsLeft = 0
 	}
 
-	p.ws.WriteMessage(websocket.BinaryMessage, []byte{byte(PlayerStateMessage), byte(secondsLeft)})
+	p.messages <- Message{Type: websocket.BinaryMessage, Data: []byte{byte(PlayerStateMessage), byte(secondsLeft)}}
 }
 
 func (p *Player) SendPlayerCounter(counter int) {
@@ -30,7 +35,11 @@ func (p *Player) SendPlayerCounter(counter int) {
 
 	binary.LittleEndian.PutUint32(bs[1:], uint32(counter))
 
-	p.ws.WriteMessage(websocket.BinaryMessage, bs)
+	p.messages <- Message{Type: websocket.BinaryMessage, Data: bs}
+}
+
+func (p *Player) SendMessage(msg Message) {
+	p.messages <- msg
 }
 
 func (p *Player) ListenInput(g *Game) error {
@@ -62,6 +71,18 @@ func (p *Player) ListenInput(g *Game) error {
 				p.cooldownAt = time.Now().Add(coolDown)
 
 				p.SendPlayerState()
+			}
+		}
+	}
+}
+
+func (p *Player) SendMessagesLoop(g *Game) {
+	for {
+		select {
+		case msg := <-p.messages:
+			err := p.ws.WriteMessage(msg.Type, msg.Data)
+			if err != nil {
+				panic(err)
 			}
 		}
 	}
