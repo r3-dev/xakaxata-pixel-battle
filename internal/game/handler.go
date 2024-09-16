@@ -22,7 +22,7 @@ func (g *Game) WsHandler(c echo.Context) error {
 	// authorize
 	sess, err := session.Get("session", c)
 	if err != nil {
-		panic(err)
+		return (err)
 	}
 
 	if sess.Values["user_id"] == nil {

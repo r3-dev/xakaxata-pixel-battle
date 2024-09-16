@@ -88,7 +88,7 @@ func main() {
 	e.GET("/", func(c echo.Context) error {
 		sess, err := session.Get("session", c)
 		if err != nil {
-			panic(err)
+			return (err)
 		}
 
 		if sess.Values["user_id"] == nil {
@@ -101,7 +101,7 @@ func main() {
 	e.GET("/me", func(c echo.Context) (err error) {
 		sess, err := session.Get("session", c)
 		if err != nil {
-			panic(err)
+			return (err)
 		}
 
 		if sess.Values["user_id"] == nil {
@@ -135,7 +135,7 @@ func main() {
 		// generate session for user
 		sess, err := session.Get("session", c)
 		if err != nil {
-			panic(err)
+			return (err)
 		}
 
 		sess.Options = &sessions.Options{
@@ -146,13 +146,13 @@ func main() {
 
 		sess.Values["twitch_auth_state"] = state_key
 		if err := sess.Save(c.Request(), c.Response()); err != nil {
-			panic(err)
+			return (err)
 		}
 
 		// save state to kv store by session id
 		err = rdb.Auth.Set(c.Request().Context(), state_key, state_value, 0).Err()
 		if err != nil {
-			panic(err)
+			return (err)
 		}
 
 		url := AppOAuthConfig.TwitchLoginConfig.AuthCodeURL(state_value)
@@ -165,7 +165,7 @@ func main() {
 
 		sess, err := session.Get("session", c)
 		if err != nil {
-			panic(err)
+			return (err)
 		}
 
 		id, ok := sess.Values["twitch_auth_state"].(string)
@@ -177,12 +177,12 @@ func main() {
 
 		saved_state, err := rdb.Auth.Get(c.Request().Context(), id).Result()
 		if err != nil {
-			panic(err)
+			return (err)
 		}
 
 		err = rdb.Auth.Del(c.Request().Context(), id).Err()
 		if err != nil {
-			panic(err)
+			return (err)
 		}
 
 		if state != saved_state {
@@ -231,12 +231,12 @@ func main() {
 
 		err = rdb.Users.Set(c.Request().Context(), user.ID, user, 0).Err()
 		if err != nil {
-			panic(err)
+			return (err)
 		}
 
 		sess.Values["user_id"] = user.ID
 		if err := sess.Save(c.Request(), c.Response()); err != nil {
-			panic(err)
+			return (err)
 		}
 
 		return c.Redirect(http.StatusSeeOther, "/")
@@ -245,7 +245,7 @@ func main() {
 	e.GET("/api/auth/logout", func(c echo.Context) error {
 		sess, err := session.Get("session", c)
 		if err != nil {
-			panic(err)
+			return (err)
 		}
 
 		delete(sess.Values, "user_id")
@@ -258,7 +258,7 @@ func main() {
 
 		err = sess.Save(c.Request(), c.Response())
 		if err != nil {
-			panic(err)
+			return (err)
 		}
 
 		return c.Redirect(http.StatusSeeOther, "/")
