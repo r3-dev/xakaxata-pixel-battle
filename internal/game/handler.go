@@ -35,7 +35,10 @@ func (g *Game) WsHandler(c echo.Context) error {
 		ID:         user_id,
 		ws:         ws,
 		cooldownAt: g.GetPlayerCooldownById(user_id),
+		messages:   make(chan Message),
 	}
+
+	go player.SendMessagesLoop(g)
 
 	g.AddPlayer(player)
 	defer g.RemovePlayer(player)
