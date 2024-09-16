@@ -1,11 +1,11 @@
 package main
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"go-echo-sandbox/internal/db"
 	"go-echo-sandbox/internal/game"
 	"go-echo-sandbox/ui"
 	"io"
@@ -17,10 +17,8 @@ import (
 
 	"github.com/gorilla/sessions"
 	"github.com/joho/godotenv"
-	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/nrednav/cuid2"
-	"github.com/redis/go-redis/v9"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/twitch"
 	"golang.org/x/time/rate"
@@ -62,36 +60,18 @@ func main() {
 		}
 	}
 
-	rdb_auth := redis.NewClient(&redis.Options{
-		Addr:     os.Getenv("REDIS_HOST"),
-		Username: os.Getenv("REDIS_USERNAME"),
-		Password: os.Getenv("REDIS_PASSWORD"),
-		DB:       0, // use default DB
-	})
+	isDev := os.Getenv("IS_DEV") == "TRUE"
 
-	rdb_users := redis.NewClient(&redis.Options{
-		Addr:     os.Getenv("REDIS_HOST"),
-		Username: os.Getenv("REDIS_USERNAME"),
-		Password: os.Getenv("REDIS_PASSWORD"),
-		DB:       1, // use default DB
-	})
-
-	err := rdb_auth.Ping(context.TODO()).Err()
-	if err != nil {
-		log.Fatal("Error connectint redis:", err)
-	}
-
-	err = rdb_users.Ping(context.TODO()).Err()
-	if err != nil {
-		log.Fatal("Error connectint redis: ", err)
-	}
-
+	rdb := db.NewRdb()
 	e := echo.New()
-	g := game.New()
+	g := game.New(rdb)
 
 	// e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-	e.Use(echoprometheus.NewMiddleware("pixelbattle")) // adds middleware to gather metrics
+	if !isDev {
+		e.Use(middleware.Recover())
+	}
+
+	// e.Use(echoprometheus.NewMiddleware("pixelbattle")) // adds middleware to gather metrics
 	e.Use(middleware.BodyLimit("2M"))
 	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(rate.Limit(20))))
 	e.Use(session.Middleware(sessions.NewCookieStore([]byte(os.Getenv("AUTH_SECRET")))))
@@ -136,7 +116,7 @@ func main() {
 
 		user_data := TwitchUser{}
 
-		err = rdb_users.Get(c.Request().Context(), user_id).Scan(&user_data)
+		err = rdb.Users.Get(c.Request().Context(), user_id).Scan(&user_data)
 		if err != nil {
 			return c.Redirect(http.StatusSeeOther, "/")
 		}
@@ -174,7 +154,7 @@ func main() {
 		}
 
 		// save state to kv store by session id
-		err = rdb_auth.Set(c.Request().Context(), state_key, state_value, 0).Err()
+		err = rdb.Auth.Set(c.Request().Context(), state_key, state_value, 0).Err()
 		if err != nil {
 			panic(err)
 		}
@@ -199,12 +179,12 @@ func main() {
 
 		delete(sess.Values, "twitch_auth_state")
 
-		saved_state, err := rdb_auth.Get(c.Request().Context(), id).Result()
+		saved_state, err := rdb.Auth.Get(c.Request().Context(), id).Result()
 		if err != nil {
 			panic(err)
 		}
 
-		err = rdb_auth.Del(c.Request().Context(), id).Err()
+		err = rdb.Auth.Del(c.Request().Context(), id).Err()
 		if err != nil {
 			panic(err)
 		}
@@ -253,7 +233,7 @@ func main() {
 
 		user := users.Data[0]
 
-		err = rdb_users.Set(c.Request().Context(), user.ID, user, 0).Err()
+		err = rdb.Users.Set(c.Request().Context(), user.ID, user, 0).Err()
 		if err != nil {
 			panic(err)
 		}
