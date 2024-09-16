@@ -84,7 +84,7 @@ func (p *Player) SendMessagesLoop(g *Game) {
 		case msg := <-p.messages:
 			err := p.ws.WriteMessage(msg.Type, msg.Data)
 			if err != nil {
-				panic(err)
+				return
 			}
 		}
 	}

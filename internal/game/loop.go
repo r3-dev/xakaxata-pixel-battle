@@ -2,6 +2,7 @@ package game
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -68,7 +69,7 @@ func (g *Game) mainLoop() {
 	// save current state to rdb
 	err := g.db.Set(context.TODO(), "game_state", binSatate, 0).Err()
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
 	}
 }
 

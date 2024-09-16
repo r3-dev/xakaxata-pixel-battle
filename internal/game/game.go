@@ -144,7 +144,7 @@ func (g *Game) SendState(p *Player) {
 func (g *Game) SetPlayerCooldownAt(id string, value time.Time) {
 	err := g.db.Set(context.TODO(), id, value, 0).Err()
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
 	}
 }
 
