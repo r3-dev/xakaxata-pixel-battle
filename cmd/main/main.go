@@ -155,9 +155,11 @@ func main() {
 			return (err)
 		}
 
-		url := AppOAuthConfig.TwitchLoginConfig.AuthCodeURL(state_value)
+		response_type := oauth2.SetAuthURLParam("response_type", `code`)
 
-		return c.Redirect(http.StatusSeeOther, url)
+		url := AppOAuthConfig.TwitchLoginConfig.AuthCodeURL(state_value, response_type)
+
+		return c.Redirect(http.StatusTemporaryRedirect, url)
 	})
 
 	e.GET("/api/auth/callback", func(c echo.Context) error {
