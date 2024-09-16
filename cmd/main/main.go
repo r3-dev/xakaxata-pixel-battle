@@ -60,16 +60,12 @@ func main() {
 		}
 	}
 
-	isDev := os.Getenv("IS_DEV") == "TRUE"
-
 	rdb := db.NewRdb()
 	e := echo.New()
 	g := game.New(rdb)
 
 	// e.Use(middleware.Logger())
-	if !isDev {
-		e.Use(middleware.Recover())
-	}
+	e.Use(middleware.Recover())
 
 	// e.Use(echoprometheus.NewMiddleware("pixelbattle")) // adds middleware to gather metrics
 	e.Use(middleware.BodyLimit("2M"))

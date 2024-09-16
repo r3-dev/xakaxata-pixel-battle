@@ -14,7 +14,7 @@ var (
 	mapSizeX = 1
 	mapSizeY = 1
 	mapSize  = mapSizeX * mapSizeY * 256 * 256
-	coolDown = 5 * time.Second
+	coolDown = 1 * time.Second
 )
 
 type Color int
@@ -156,7 +156,7 @@ func (g *Game) GetPlayerCooldownById(id string) time.Time {
 
 	t, err := time.Parse(time.RFC3339, val)
 	if err != nil {
-		panic(err)
+		return time.Now()
 	}
 
 	return t
