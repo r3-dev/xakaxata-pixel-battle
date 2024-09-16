@@ -316,20 +316,26 @@
         if (type === SOCKETS_MESSAGES.STATE_PLAYER) {
           const secondsBuffer = await event.data.slice(1);
           const [seconds] = new Uint8Array(await secondsBuffer.arrayBuffer());
-
-          if (!seconds) return;
-
+          console.log(seconds);
           const paletteContainer = document.getElementById("paletteContainer");
           const delayBanner = document.createElement("div");
-          delayBanner.className =
-            "bg-black/80 absolute w-full top-0 bottom-0 left-0 right-0 text-white rounded-lg flex justify-center items-center";
-          delayBanner.innerHTML = "Delay";
-          isDelay = true;
-          paletteContainer.appendChild(delayBanner);
+
+          if (seconds == 0) {
+            isDelay = false;
+            delayBanner.remove();
+          } else {
+            isDelay = true;
+            delayBanner.className =
+              "bg-black/80 absolute w-full top-0 bottom-0 left-0 right-0 text-white rounded-lg flex justify-center items-center";
+            delayBanner.innerHTML = "Delay";
+            isDelay = true;
+            paletteContainer.appendChild(delayBanner);
+          }
+
           setTimeout(() => {
             isDelay = false;
             delayBanner.remove();
-          }, seconds * 1000);
+          }, seconds * 1000 + 150);
         }
 
         if (type === SOCKETS_MESSAGES.STATE_PLAYERS) {
@@ -344,7 +350,7 @@
         console.log("DISCONNECTED");
         setTimeout(() => {
           window.location.reload();
-        }, 1000);
+        }, 3000);
       };
     </script>
     <script>

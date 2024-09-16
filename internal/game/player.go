@@ -2,6 +2,7 @@ package game
 
 import (
 	"encoding/binary"
+	"math"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -20,13 +21,13 @@ type Player struct {
 }
 
 func (p *Player) SendPlayerState() {
-	secondsLeft := int(p.cooldownAt.Sub(time.Now()).Seconds())
+	secondsLeft := math.Ceil((p.cooldownAt.Sub(time.Now()).Seconds()))
 
 	if secondsLeft < 0 {
 		secondsLeft = 0
 	}
 
-	p.messages <- Message{Type: websocket.BinaryMessage, Data: []byte{byte(PlayerStateMessage), byte(secondsLeft)}}
+	p.messages <- Message{Type: websocket.BinaryMessage, Data: []byte{byte(PlayerStateMessage), byte(int(secondsLeft))}}
 }
 
 func (p *Player) SendPlayerCounter(counter int) {
@@ -59,6 +60,7 @@ func (p *Player) ListenInput(g *Game) error {
 			switch int(b[0]) {
 			case StateMigrationMessage:
 				if p.cooldownAt.After(time.Now()) {
+					p.SendPlayerState()
 					continue
 				}
 
