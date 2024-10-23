@@ -3,7 +3,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1, minimum-scale=1,width=device-width,height=device-height,user-scalable=no" />
     <meta name="description" content="" />
     <meta name="author" content="" />
     <link rel="icon" href="/favicon.ico" />
@@ -394,7 +394,7 @@
         event.preventDefault();
         const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
         canvas.zoom(pixels, zoomFactor, event.clientX, event.clientY);
-      });
+      }, { passive: false });
 
       document.addEventListener("mousedown", (event) => {
         isDraging = true;
