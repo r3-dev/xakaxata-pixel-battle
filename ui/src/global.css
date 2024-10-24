@@ -2,12 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer components {
-    .selected-color {
-        @apply outline-white
-    }
+body {
+	background-color: #282828;
 }
 
-body {
-    background-color: #282828;
+canvas {
+	image-rendering: pixelated;
+	touch-action: pan-x pan-y pinch-zoom;
 }
