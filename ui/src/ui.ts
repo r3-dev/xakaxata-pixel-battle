@@ -8,7 +8,7 @@ interface PaletteProps {
 export const Palette = (props: PaletteProps): HTMLElement => {
   const paletteContainer = document.createElement("div");
   paletteContainer.className =
-    "flex fixed bottom-2 flex justify-center z-20 w-full px-2 pointer-events-none";
+    "flex fixed bottom-2 flex justify-center z-20 w-full px-2 pointer-events-none bg-transparent";
   const paletteElement = document.createElement("div");
   paletteElement.className =
     "flex rounded-xl bg-white shadow-md border border-black/10 p-2 gap-1 overflow-x-auto pointer-events-auto";

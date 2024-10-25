@@ -42,20 +42,33 @@ interface Pixel {
 }
 
 class BoardCursor {
-  public pressed = false;
-  public dragging = false;
+  static readonly KEY = "board-cursor";
+
   public x = 0;
   public y = 0;
+  public pressed = false;
+  public dragging = false;
 
   private drawTimeoutId: number | null = null;
 
   private constructor(
-    public focusedPixel: Pixel | null,
     public currentColor: PixelColor,
+    public hoveredPixel: Pixel | null,
   ) {}
 
   static create(): BoardCursor {
-    return new BoardCursor(null, PixelColor.White);
+    return new BoardCursor(PixelColor.White, null);
+  }
+
+  static load(): BoardCursor | null {
+    const cursor = localStorage.getItem(BoardCursor.KEY);
+    if (!cursor) return null;
+    const [currentColor] = JSON.parse(cursor);
+    return new BoardCursor(currentColor, null);
+  }
+
+  save() {
+    localStorage.setItem(BoardCursor.KEY, JSON.stringify([this.currentColor]));
   }
 
   canDraw() {
@@ -75,31 +88,98 @@ class BoardCursor {
   }
 }
 
-class BoardState {
-  constructor(
-    public width: number,
-    public height: number,
+class BoardPosition {
+  static readonly KEY = "board-position";
+
+  private constructor(
+    public zoomFactor: number,
+    public offsetX: number,
+    public offsetY: number,
+  ) {}
+
+  static create(): BoardPosition {
+    return BoardPosition.load() || new BoardPosition(1, 0, 0);
+  }
+
+  static load(): BoardPosition | null {
+    const position = localStorage.getItem(BoardPosition.KEY);
+    if (!position) return null;
+    const [zoomFactor, offsetX, offsetY] = JSON.parse(position);
+    return new BoardPosition(zoomFactor, offsetX, offsetY);
+  }
+
+  save() {
+    localStorage.setItem(
+      BoardPosition.KEY,
+      JSON.stringify([this.zoomFactor, this.offsetX, this.offsetY]),
+    );
+  }
+}
+
+export class BoardState {
+  static readonly KEY = "board";
+  static readonly CHUNK_SIZE = 256;
+
+  private constructor(
+    public readonly width: number,
+    public readonly height: number,
     public pixels: Uint8Array,
   ) {}
+
+  static create(buffer: Uint8Array): BoardState {
+    const [width, height] = Array.from(
+      buffer.slice(0, 2),
+    ).map((x) => x * BoardState.CHUNK_SIZE);
+    const pixels = buffer.slice(2);
+    return new BoardState(width, height, pixels);
+  }
+
+  static load(): BoardState | null {
+    const base64 = localStorage.getItem(BoardState.KEY);
+    if (!base64) return null;
+    const buffer = new TextEncoder().encode(atob(base64));
+    return BoardState.create(buffer);
+  }
+
+  save() {
+    const buffer = new Uint8Array(2 + this.pixels.length);
+    buffer[0] = this.width / BoardState.CHUNK_SIZE;
+    buffer[1] = this.height / BoardState.CHUNK_SIZE;
+    buffer.set(this.pixels, 2);
+    const base64 = btoa(new TextDecoder().decode(buffer));
+    localStorage.setItem(BoardState.KEY, base64);
+  }
+
+  getPixelChunk(pixelIndex: number): number {
+    return Math.floor(pixelIndex / BoardState.CHUNK_SIZE);
+  }
+
+  getPixelChunkIndex(pixelIndex: number): number {
+    return pixelIndex - this.getPixelChunk(pixelIndex) * BoardState.CHUNK_SIZE;
+  }
+
+  migrate(migrations: Uint8Array) {
+    for (let i = 0; i < migrations.length; i += 3) {
+      const [chunk, chunkIndex, colorIndex] = migrations.slice(i, i + 3);
+      const pixelIndex = chunk * BoardState.CHUNK_SIZE + chunkIndex;
+      this.pixels[pixelIndex] = colorIndex;
+    }
+  }
 }
 
 export class Board {
   public readonly MIN_ZOOM_FACTOR = 0.2;
   public readonly MAX_ZOOM_FACTOR = 16;
-  public readonly ZOOM_DAMPING_FACTOR = 0.12;
   public readonly ZOOM_SPEED = 0.01;
 
-  public state: BoardState | null = null;
-
   public pixelSize = 6;
-  public zoomFactor = 1;
-  public offsetX = 0;
-  public offsetY = 0;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly ctx: CanvasRenderingContext2D,
     public readonly cursor: BoardCursor,
+    public readonly pos: BoardPosition,
+    public state: BoardState | null,
   ) {}
 
   static create(canvas: HTMLCanvasElement): Board {
@@ -109,7 +189,21 @@ export class Board {
     }
     ctx.imageSmoothingEnabled = false;
     canvas.style.imageRendering = "pixelated";
-    return new Board(canvas, ctx, BoardCursor.create());
+    return new Board(
+      canvas,
+      ctx,
+      BoardCursor.load() || BoardCursor.create(),
+      BoardPosition.create(),
+      BoardState.load(),
+    );
+  }
+
+  save() {
+    if (this.state) {
+      this.state.save();
+    }
+    this.pos.save();
+    this.cursor.save();
   }
 
   resize(width: number, height: number, pixelRatio: number) {
@@ -124,34 +218,34 @@ export class Board {
     this.state.pixels[pixelIndex] = color;
   }
 
-  setState(width: number, height: number, pixels: Uint8Array) {
-    this.state = new BoardState(width, height, pixels);
-  }
-
   setCenterOffset() {
     if (!this.state) return;
-    this.offsetX = (this.canvas.width / 2) -
-      (this.state.width * this.pixelSize * this.zoomFactor / 2);
-    this.offsetY = (this.canvas.height / 2) -
-      (this.state.height * this.pixelSize * this.zoomFactor / 2);
+    this.pos.offsetX = (this.canvas.width / 2) -
+      (this.state.width * this.pixelSize * this.pos.zoomFactor / 2);
+    this.pos.offsetY = (this.canvas.height / 2) -
+      (this.state.height * this.pixelSize * this.pos.zoomFactor / 2);
   }
 
-  getPixel(x: number, y: number): Pixel | null {
+  getPixel(clientX: number, clientY: number): Pixel | null {
     if (!this.state) return null;
     if (
-      x < this.offsetX ||
-      x > this.offsetX + this.state.width * this.pixelSize * this.zoomFactor ||
-      y < this.offsetY ||
-      y > this.offsetY + this.state.height * this.pixelSize * this.zoomFactor
+      clientX < this.pos.offsetX ||
+      clientX >
+        this.pos.offsetX +
+          this.state.width * this.pixelSize * this.pos.zoomFactor ||
+      clientY < this.pos.offsetY ||
+      clientY >
+        this.pos.offsetY +
+          this.state.height * this.pixelSize * this.pos.zoomFactor
     ) {
       return null;
     }
 
     const i = Math.floor(
-      (x - this.offsetX) / (this.pixelSize * this.zoomFactor),
+      (clientX - this.pos.offsetX) / (this.pixelSize * this.pos.zoomFactor),
     );
     const j = Math.floor(
-      (y - this.offsetY) / (this.pixelSize * this.zoomFactor),
+      (clientY - this.pos.offsetY) / (this.pixelSize * this.pos.zoomFactor),
     );
     const index = j * this.state.width + i;
 
@@ -166,10 +260,10 @@ export class Board {
     if (!this.state) {
       throw new Error("Board state not set");
     }
-    const pixelSize = this.pixelSize * this.zoomFactor;
+    const pixelSize = this.pixelSize * this.pos.zoomFactor;
 
-    const viewportXStart = -this.offsetX / pixelSize;
-    const viewportYStart = -this.offsetY / pixelSize;
+    const viewportXStart = -this.pos.offsetX / pixelSize;
+    const viewportYStart = -this.pos.offsetY / pixelSize;
     const viewportXEnd = viewportXStart + this.canvas.width / pixelSize;
     const viewportYEnd = viewportYStart + this.canvas.height / pixelSize;
 
@@ -182,9 +276,9 @@ export class Board {
   }
 
   drawCursor(pixel: Pixel) {
-    const pixelSize = this.pixelSize * this.zoomFactor;
-    const xPos = pixel.i * pixelSize + this.offsetX;
-    const yPos = pixel.j * pixelSize + this.offsetY;
+    const pixelSize = this.pixelSize * this.pos.zoomFactor;
+    const xPos = pixel.i * pixelSize + this.pos.offsetX;
+    const yPos = pixel.j * pixelSize + this.pos.offsetY;
 
     this.ctx.strokeStyle = "#000";
     this.ctx.lineWidth = 2 * window.devicePixelRatio;
@@ -192,60 +286,56 @@ export class Board {
   }
 
   drawGrid(viewport: Rect) {
-    const pixelSize = this.pixelSize * this.zoomFactor;
+    const pixelSize = this.pixelSize * this.pos.zoomFactor;
     this.ctx.strokeStyle = "rgb(0,0,0,0.1)";
     this.ctx.lineWidth = 1 * window.devicePixelRatio;
 
     for (let x = viewport.x0; x <= viewport.x1; x++) {
-      const xPos = x * pixelSize + this.offsetX;
+      const xPos = x * pixelSize + this.pos.offsetX;
       this.ctx.beginPath();
-      this.ctx.moveTo(xPos, this.offsetY + viewport.y0 * pixelSize);
-      this.ctx.lineTo(xPos, this.offsetY + viewport.y1 * pixelSize);
+      this.ctx.moveTo(xPos, this.pos.offsetY + viewport.y0 * pixelSize);
+      this.ctx.lineTo(xPos, this.pos.offsetY + viewport.y1 * pixelSize);
       this.ctx.stroke();
     }
 
     for (let y = viewport.y0; y <= viewport.y1; y++) {
-      const yPos = y * pixelSize + this.offsetY;
+      const yPos = y * pixelSize + this.pos.offsetY;
       this.ctx.beginPath();
-      this.ctx.moveTo(this.offsetX + viewport.x0 * pixelSize, yPos);
-      this.ctx.lineTo(this.offsetX + viewport.x1 * pixelSize, yPos);
+      this.ctx.moveTo(this.pos.offsetX + viewport.x0 * pixelSize, yPos);
+      this.ctx.lineTo(this.pos.offsetX + viewport.x1 * pixelSize, yPos);
       this.ctx.stroke();
     }
   }
 
   zoom(clientX: number, clientY: number, deltaY: number) {
-    const previousPixelSize = this.pixelSize * this.zoomFactor;
+    const previousPixelSize = this.pixelSize * this.pos.zoomFactor;
+    this.pos.zoomFactor = clamp(
+      this.pos.zoomFactor *
+        (1 + clamp(-deltaY, -25, 25) * this.ZOOM_SPEED),
+      this.MIN_ZOOM_FACTOR,
+      this.MAX_ZOOM_FACTOR,
+    );
 
-    const zoomChange = 1 + clamp(-deltaY, -25, 25) * this.ZOOM_SPEED;
-    let newZoomFactor = this.zoomFactor * zoomChange;
-    if (newZoomFactor < this.MIN_ZOOM_FACTOR) {
-      newZoomFactor = this.MIN_ZOOM_FACTOR +
-        (newZoomFactor - this.MIN_ZOOM_FACTOR) * this.ZOOM_DAMPING_FACTOR;
-    } else if (newZoomFactor > this.MAX_ZOOM_FACTOR) {
-      newZoomFactor = this.MAX_ZOOM_FACTOR +
-        (newZoomFactor - this.MAX_ZOOM_FACTOR) * this.ZOOM_DAMPING_FACTOR;
-    }
-    this.zoomFactor = newZoomFactor;
-
-    const newPixelSize = this.pixelSize * this.zoomFactor;
-    this.offsetX =
-      (this.offsetX - clientX) * (newPixelSize / previousPixelSize) + clientX;
-    this.offsetY =
-      (this.offsetY - clientY) * (newPixelSize / previousPixelSize) + clientY;
+    const newPixelSize = this.pixelSize * this.pos.zoomFactor;
+    this.pos.offsetX =
+      (this.pos.offsetX - clientX) * (newPixelSize / previousPixelSize) +
+      clientX;
+    this.pos.offsetY =
+      (this.pos.offsetY - clientY) * (newPixelSize / previousPixelSize) +
+      clientY;
   }
 
-  render() {
+  drawBoard(viewport: Rect) {
     if (!this.state) return;
 
-    const viewport = this.getViewport();
-    const pixelSize = this.pixelSize * this.zoomFactor;
+    const pixelSize = this.pixelSize * this.pos.zoomFactor;
 
     this.ctx.fillStyle = "#282828";
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.fillStyle = "#FFF";
     this.ctx.fillRect(
-      this.offsetX,
-      this.offsetY,
+      this.pos.offsetX,
+      this.pos.offsetY,
       this.state.width * pixelSize,
       this.state.height * pixelSize,
     );
@@ -258,19 +348,12 @@ export class Board {
 
         this.ctx.fillStyle = PIXEL_COLORS[color as PixelColor];
         this.ctx.fillRect(
-          x * pixelSize + this.offsetX,
-          y * pixelSize + this.offsetY,
+          x * pixelSize + this.pos.offsetX,
+          y * pixelSize + this.pos.offsetY,
           pixelSize,
           pixelSize,
         );
       }
-    }
-
-    if (this.zoomFactor > 3) {
-      this.drawGrid(viewport);
-    }
-    if (this.cursor.focusedPixel && this.cursor.canDraw()) {
-      this.drawCursor(this.cursor.focusedPixel);
     }
   }
 }

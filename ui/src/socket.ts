@@ -1,5 +1,3 @@
-export const CHUNK_SIZE = 256;
-
 export const enum SocketMessage {
   State = 0,
   StateMigration = 1,
@@ -19,43 +17,34 @@ export type SocketMessageHandlers = Record<
   (message: ArrayBuffer) => void
 >;
 
-export class SocketManager {
-  private constructor(
-    public ws: WebSocket,
-    private handlers: SocketMessageHandlers,
-  ) {}
-
-  static create(url: string, handlers: SocketMessageHandlers): SocketManager {
-    const ws = new WebSocket(url);
-    ws.binaryType = "arraybuffer";
-    return new SocketManager(ws, handlers);
+export function handleWebSocketMessage(
+  event: MessageEvent<ArrayBuffer>,
+  handlers: SocketMessageHandlers,
+) {
+  const type: SocketMessage | undefined =
+    SOCKET_MESSAGES[new Uint8Array(event.data.slice(0, 1))[0]];
+  if (type === undefined) {
+    console.warn("Unknown message type", type);
+    return;
   }
 
-  handleMessage(event: MessageEvent<ArrayBuffer>) {
-    const type: SocketMessage | undefined =
-      SOCKET_MESSAGES[new Uint8Array(event.data.slice(0, 1))[0]];
-    if (type === undefined) {
-      console.warn("Unknown message type", type);
-      return;
-    }
-
-    const data = event.data.slice(1);
-    try {
-      this.handlers[type as SocketMessage](data);
-    } catch (error) {
-      console.error("Error handling message", error);
-    }
+  const data = event.data.slice(1);
+  try {
+    handlers[type as SocketMessage](data);
+  } catch (error) {
+    console.error("Error handling message", error);
   }
+}
 
-  sendDrawPixelMessage(pixelIndex: number, color: number) {
-    const chunk = Math.floor(pixelIndex / CHUNK_SIZE);
-    this.ws.send(
-      new Uint8Array([
-        SocketMessage.StateMigration,
-        chunk,
-        pixelIndex - chunk * CHUNK_SIZE,
-        color,
-      ]),
-    );
-  }
+export function createDrawPixelMessage(
+  chunkIndex: number,
+  pixelChunkIndex: number,
+  colorIndex: number,
+): Uint8Array {
+  return new Uint8Array([
+    SocketMessage.StateMigration,
+    chunkIndex,
+    pixelChunkIndex,
+    colorIndex,
+  ]);
 }

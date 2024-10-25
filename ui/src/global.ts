@@ -1,24 +1,16 @@
-import { Board, PixelColor } from "./board";
-import { CHUNK_SIZE, SocketManager, SocketMessage } from "./socket";
+import { Board, BoardState, PixelColor } from "./board";
+import {
+  createDrawPixelMessage,
+  handleWebSocketMessage,
+  SocketMessage,
+  type SocketMessageHandlers,
+} from "./socket";
 import { ActivePixelCoords, OnlineUsers, Palette } from "./ui";
-
-class LocaleStorageValue<T> {
-  constructor(private key: string, private defaultValue: T) {}
-
-  get(): T {
-    const value = localStorage.getItem(this.key);
-    if (value === null) return this.defaultValue;
-    return JSON.parse(value);
-  }
-
-  set(value: T) {
-    localStorage.setItem(this.key, JSON.stringify(value));
-  }
-}
 
 const canvas = document.createElement("canvas");
 canvas.className = "relative overflow-hidden touch-none";
 document.body.appendChild(canvas);
+
 const board = Board.create(canvas);
 
 let usersCount = 1;
@@ -34,50 +26,45 @@ const setActiveColor = (color: PixelColor) => {
   palette = newPalette;
 };
 let palette = Palette({
-  activeColor: PixelColor.White,
+  activeColor: board.cursor.currentColor,
   setActiveColor,
 });
 document.body.appendChild(palette);
 
-const socket = SocketManager.create(
+const socketHandlers: SocketMessageHandlers = {
+  [SocketMessage.State]: (message) => {
+    const newState = BoardState.create(new Uint8Array(message));
+    const needToCenterOffset = board.state === null;
+    board.state = newState;
+    if (needToCenterOffset) {
+      board.setCenterOffset();
+    }
+  },
+  [SocketMessage.StateMigration]: (message) => {
+    if (board.state) {
+      board.state.migrate(new Uint8Array(message));
+    }
+  },
+  [SocketMessage.StatePlayer]: (message) => {
+    const [seconds] = new Uint8Array(message);
+    board.cursor.setDrawTimeout(seconds);
+  },
+  [SocketMessage.StatePlayers]: (message) => {
+    const [count] = new Uint16Array(message);
+    if (count === usersCount) return;
+    usersCount = count;
+    const newOnlineUsers = OnlineUsers(usersCount);
+    onlineUsers.replaceWith(newOnlineUsers);
+    onlineUsers = newOnlineUsers;
+  },
+};
+
+const ws = new WebSocket(
   (location.protocol === "https:" ? "wss://" : "ws://") +
     location.host + "/ws",
-  {
-    [SocketMessage.State]: (message) => {
-      const [width, height] = Array.from(
-        new Uint8Array(message.slice(0, 2)),
-      ).map((x) => x * 256);
-      const pixels = new Uint8Array(message.slice(2));
-
-      const needToCenterOffset = board.state === null;
-      board.setState(width, height, pixels);
-      if (needToCenterOffset) {
-        board.setCenterOffset();
-      }
-    },
-    [SocketMessage.StateMigration]: (message) => {
-      const migrations = new Uint8Array(message);
-      for (let i = 0; i < migrations.length; i += 3) {
-        const [chunk, chunkIndex, colorId] = migrations.slice(i, i + 3);
-        const pixelIndex = chunk * CHUNK_SIZE + chunkIndex;
-        board.setPixelColor(pixelIndex, colorId);
-      }
-    },
-    [SocketMessage.StatePlayer]: (message) => {
-      const [seconds] = new Uint8Array(message);
-      board.cursor.setDrawTimeout(seconds);
-    },
-    [SocketMessage.StatePlayers]: (message) => {
-      const [count] = new Uint16Array(message);
-      if (count === usersCount) return;
-      usersCount = count;
-      const newOnlineUsers = OnlineUsers(usersCount);
-      onlineUsers.replaceWith(newOnlineUsers);
-      onlineUsers = newOnlineUsers;
-    },
-  },
 );
-socket.ws.onmessage = socket.handleMessage.bind(socket);
+ws.binaryType = "arraybuffer";
+ws.onmessage = (event) => handleWebSocketMessage(event, socketHandlers);
 
 document.addEventListener(
   "wheel",
@@ -112,12 +99,12 @@ canvas.addEventListener("pointermove", (event) => {
   if (!board.cursor.pressed) {
     const pixel = board.getPixel(clientX, clientY);
     if (
-      pixel && (board.cursor.focusedPixel === null ||
-        board.cursor.focusedPixel.index !== pixel.index)
+      pixel && (board.cursor.hoveredPixel === null ||
+        board.cursor.hoveredPixel.index !== pixel.index)
     ) {
       activePixelCoords.textContent = `${pixel.i + 1}:${pixel.j + 1}`;
     }
-    board.cursor.focusedPixel = pixel;
+    board.cursor.hoveredPixel = pixel;
 
     board.cursor.x = clientX;
     board.cursor.y = clientY;
@@ -126,28 +113,29 @@ canvas.addEventListener("pointermove", (event) => {
 
   document.body.style.cursor = "grabbing";
 
-  board.offsetX = board.offsetX + (clientX - board.cursor.x);
-  board.offsetY = board.offsetY + (clientY - board.cursor.y);
+  board.pos.offsetX += clientX - board.cursor.x;
+  board.pos.offsetY += clientY - board.cursor.y;
 
-  board.cursor.focusedPixel = null;
+  board.cursor.hoveredPixel = null;
   board.cursor.dragging = true;
   board.cursor.x = clientX;
   board.cursor.y = clientY;
 }, { passive: false });
 
-canvas.addEventListener("pointerleave", () => {
-  board.cursor.focusedPixel = null;
+function resetCursorState() {
+  document.body.style.cursor = "default";
+  board.cursor.hoveredPixel = null;
   board.cursor.pressed = false;
   board.cursor.dragging = false;
-});
+}
 
+canvas.addEventListener("pointerleave", resetCursorState);
 canvas.addEventListener("pointerup", (event) => {
   event.preventDefault();
-  document.body.style.cursor = "default";
-
-  if (board.cursor.dragging || !board.cursor.canDraw()) {
-    board.cursor.pressed = false;
-    board.cursor.dragging = false;
+  if (
+    board.cursor.dragging || !board.cursor.canDraw() || board.state === null
+  ) {
+    resetCursorState();
     return;
   }
 
@@ -156,15 +144,27 @@ canvas.addEventListener("pointerup", (event) => {
   const pixel = board.getPixel(clientX, clientY);
   if (!pixel) return;
 
-  board.setPixelColor(pixel.index, board.cursor.currentColor);
-  socket.sendDrawPixelMessage(pixel.index, board.cursor.currentColor);
+  board.state.pixels[pixel.index] = board.cursor.currentColor;
+  ws.send(createDrawPixelMessage(
+    board.state.getPixelChunk(pixel.index),
+    board.state.getPixelChunkIndex(pixel.index),
+    board.cursor.currentColor,
+  ));
 
-  board.cursor.pressed = false;
-  board.cursor.dragging = false;
+  resetCursorState();
 }, { passive: false });
 
+window.addEventListener("beforeunload", () => board.save());
+
 const render = () => {
-  board.render();
+  const viewport = board.getViewport();
+  board.drawBoard(viewport);
+  if (board.pos.zoomFactor > 3) {
+    board.drawGrid(viewport);
+  }
+  if (board.cursor.hoveredPixel && board.cursor.canDraw()) {
+    board.drawCursor(board.cursor.hoveredPixel);
+  }
   requestAnimationFrame(render);
 };
 requestAnimationFrame(render);
