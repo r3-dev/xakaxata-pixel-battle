@@ -35,16 +35,3 @@ export function handleWebSocketMessage(
     console.error("Error handling message", error);
   }
 }
-
-export function createDrawPixelMessage(
-  chunkIndex: number,
-  pixelChunkIndex: number,
-  colorIndex: number,
-): Uint8Array {
-  return new Uint8Array([
-    SocketMessage.StateMigration,
-    chunkIndex,
-    pixelChunkIndex,
-    colorIndex,
-  ]);
-}
