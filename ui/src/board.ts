@@ -29,7 +29,7 @@ const getRGBHash = (r: number, g: number, b: number): number => {
 };
 
 const COLOR_INDEX_BY_RGB_HASH = new Map<number, PixelColor>(
-	PIXEL_COLORS.entries().map(([colorIndex, [r, g, b]]) => {
+	Array.from(PIXEL_COLORS.entries()).map(([colorIndex, [r, g, b]]) => {
 		return [getRGBHash(r, g, b), colorIndex];
 	})
 );
@@ -59,7 +59,7 @@ class BoardCursor {
 	public pressed = false;
 	public dragging = false;
 
-	private drawTimeoutId: number | null = null;
+	private drawTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 	private constructor(
 		public currentColor: PixelColor,
